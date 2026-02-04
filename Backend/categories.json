@@ -1,0 +1,10 @@
+{
+    "income": ["salario", "inversiones", "otros"],
+    
+    "expense": [
+      "compras", "alimentos", "telefonica", "entretenimiento",
+      "educacion", "salud", "deportes", "transporte", "ropa",
+      "viajes", "hijos", "verduras", "frutas", "auto", "hogar",
+      "mascota", "reparaciones", "otros"
+    ]
+}
