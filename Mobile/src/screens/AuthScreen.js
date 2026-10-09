@@ -9,7 +9,8 @@ import {
     Alert,
     KeyboardAvoidingView,
     Platform,
-    ScrollView
+    ScrollView,
+    Image
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as LocalAuthentication from 'expo-local-authentication';
@@ -199,9 +200,11 @@ export const AuthScreen = ({ onAuthSuccess }) => {
         >
             <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
                 <View style={styles.card}>
-                    <View style={styles.logoBadge}>
-                        <Ionicons name="wallet-outline" size={30} color="#FFFFFF" />
-                    </View>
+                    <Image
+                        source={require('../../assets/icon.png')}
+                        style={styles.logoBadge}
+                        resizeMode="cover"
+                    />
                     <Text style={styles.appTitle}>FinTrack Movil</Text>
                     <Text style={styles.appSubtitle}>
                         {isRegister ? 'Crea tu cuenta y selecciona tu moneda' : 'Gestiona tus ingresos y gastos'}
@@ -452,12 +455,10 @@ const styles = StyleSheet.create({
         shadowRadius: 10
     },
     logoBadge: {
-        width: 60,
-        height: 60,
-        borderRadius: 16,
-        backgroundColor: theme.colors.primary,
-        justifyContent: 'center',
-        alignItems: 'center',
+        width: 68,
+        height: 68,
+        borderRadius: 18,
+        alignSelf: 'center',
         marginBottom: 12
     },
     appTitle: {

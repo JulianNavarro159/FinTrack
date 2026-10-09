@@ -5,6 +5,12 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0A1527"
+    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.juliannavarro.fintrack"
@@ -12,7 +18,8 @@
     "android": {
       "package": "com.juliannavarro.fintrack",
       "adaptiveIcon": {
-        "backgroundColor": "#ffffff"
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0A1527"
       },
       "permissions": [
         "USE_BIOMETRIC",
