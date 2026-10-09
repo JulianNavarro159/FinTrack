@@ -6,9 +6,11 @@
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.juliannavarro.fintrack"
     },
     "android": {
+      "package": "com.juliannavarro.fintrack",
       "adaptiveIcon": {
         "backgroundColor": "#ffffff"
       }

@@ -1,10 +1,15 @@
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
+const PRODUCTION_API_URL = 'https://fintrack-backend-pza5.onrender.com';
 const FALLBACK_HOST_IP = '192.168.20.7';
 const BACKEND_PORT = 3001;
 
 const resolveDefaultBaseUrl = () => {
+    if (PRODUCTION_API_URL) {
+        return PRODUCTION_API_URL;
+    }
+
     const hostUri = Constants?.expoConfig?.hostUri
         || Constants?.manifest2?.extra?.expoClient?.hostUri
         || Constants?.manifest?.debuggerHost;
@@ -14,10 +19,6 @@ const resolveDefaultBaseUrl = () => {
         if (ip && ip !== 'localhost' && ip !== '127.0.0.1') {
             return `http://${ip}:${BACKEND_PORT}`;
         }
-    }
-
-    if (Platform.OS === 'android') {
-        return `http://${FALLBACK_HOST_IP}:${BACKEND_PORT}`;
     }
 
     return `http://${FALLBACK_HOST_IP}:${BACKEND_PORT}`;
