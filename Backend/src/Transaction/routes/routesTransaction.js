@@ -1,13 +1,17 @@
-const { 
+const router = require('express').Router();
+const {
     createTransaction,
-    getTransaction
+    getTransaction,
+    getMonthlySummary,
+    deleteTransaction,
+    updateTransaction
 } = require('../controllers/transactionController');
 const authMiddleware = require('../middlewares/authMiddleware');
 
-
-const router = require('express').Router()
-
-router.post('/', authMiddleware, createTransaction);
+router.get('/summary', authMiddleware, getMonthlySummary);
 router.get('/', authMiddleware, getTransaction);
+router.post('/', authMiddleware, createTransaction);
+router.put('/:id', authMiddleware, updateTransaction);
+router.delete('/:id', authMiddleware, deleteTransaction);
 
 module.exports = router;

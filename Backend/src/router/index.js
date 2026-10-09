@@ -1,23 +1,23 @@
 const { Router } = require('express');
 
-const routesUsers = require('./../Users/routes/routesUsers');
-const routesTransaction = require('./../Transaction/routes/routesTransaction');
+const routesUsers = require('../Users/routes/routesUsers');
+const routesTransaction = require('../Transaction/routes/routesTransaction');
+const routesCategories = require('../Categories/routes/routesCategories');
 
-const router = () => {
-    const routers = Router();
-    routers.use('/transaction', routesTransaction);
+const createMainRouter = () => {
+    const mainRouter = Router();
+    mainRouter.use('/transaction', routesTransaction);
+    mainRouter.use('/categories', routesCategories);
+    return mainRouter;
+};
 
-    return routers;
-}
-
-const auth_router = () => {
-    const routers = Router();
-    routers.use('/users', routesUsers);
-
-    return routers;
-}
+const createAuthRouter = () => {
+    const authRouter = Router();
+    authRouter.use('/users', routesUsers);
+    return authRouter;
+};
 
 module.exports = {
-    router: router(),
-    auth_router: auth_router()
+    router: createMainRouter(),
+    auth_router: createAuthRouter()
 };

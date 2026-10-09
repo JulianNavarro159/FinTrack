@@ -9,24 +9,45 @@ const {
   DB_USER,
   DB_PASSWORD,
   DB_HOST,
-  DB_PORT
+  DB_PORT,
+  DATABASE_URL,
+  DB_SSL
 } = process.env;
 
-const sequelize = new Sequelize(
-  DB_NAME,
-  DB_USER,
-  DB_PASSWORD,
-  {
-    host: DB_HOST || "localhost",
-    port: DB_PORT || 3306,
-    dialect: "mysql",
-    logging: false,
-    define: {
-      timestamps: true,
-      underscored: false
-    }
-  }
-);
+const dialectOptions = {};
+if (DB_SSL === "true" || (DATABASE_URL && !DATABASE_URL.includes("localhost"))) {
+  dialectOptions.ssl = {
+    require: true,
+    rejectUnauthorized: false
+  };
+}
+
+const sequelize = DATABASE_URL
+  ? new Sequelize(DATABASE_URL, {
+      dialect: "mysql",
+      logging: false,
+      dialectOptions,
+      define: {
+        timestamps: true,
+        underscored: false
+      }
+    })
+  : new Sequelize(
+      DB_NAME || "gestor_de_gastos",
+      DB_USER || "root",
+      DB_PASSWORD || "",
+      {
+        host: DB_HOST || "localhost",
+        port: DB_PORT || 3306,
+        dialect: "mysql",
+        logging: false,
+        dialectOptions,
+        define: {
+          timestamps: true,
+          underscored: false
+        }
+      }
+    );
 
 const basename = path.basename(__filename);
 const modelsPath = path.join(__dirname, "/models");

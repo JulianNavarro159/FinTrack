@@ -1,16 +1,22 @@
+const router = require('express').Router();
 const {
     userRegister,
-    userByEmail,
-    userByOnliEmail,
-    getToken
-} = require('./../controllers/userController.js');
-const upload = require('../../../src/configCloudinary.js');
+    userLogin,
+    getMyProfile,
+    updateProfile,
+    updateCurrency,
+    userByEmail
+} = require('../controllers/userController');
+const authMiddleware = require('../../Transaction/middlewares/authMiddleware');
+const upload = require('../../configCloudinary');
 
-const routesUsers = require('express').Router();
+router.post('/register', upload.single('profilephoto'), userRegister);
+router.post('/', upload.single('profilephoto'), userRegister);
+router.post('/login', userLogin);
+router.get('/me', authMiddleware, getMyProfile);
+router.put('/profile', authMiddleware, upload.single('profilephoto'), updateProfile);
+router.put('/me', authMiddleware, upload.single('profilephoto'), updateProfile);
+router.patch('/currency', authMiddleware, updateCurrency);
+router.get('/:email', userByEmail);
 
-routesUsers.post('/', upload.single('profilephoto'), userRegister);
-routesUsers.get('/:email', userByEmail);
-routesUsers.get('/email/:email', userByOnliEmail);
-routesUsers.get('/auth/token', getToken);
-
-module.exports = routesUsers;
+module.exports = router;

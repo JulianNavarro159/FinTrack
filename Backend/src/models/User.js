@@ -37,6 +37,15 @@ module.exports = (sequelize) => {
             allowNull: true,
             defaultValue: null
         },
+        currency: {
+            type: DataTypes.STRING(10),
+            allowNull: false,
+            defaultValue: 'USD'
+        },
+        password: {
+            type: DataTypes.STRING(255),
+            allowNull: true
+        }
     }, {
         paranoid: true,
     })
