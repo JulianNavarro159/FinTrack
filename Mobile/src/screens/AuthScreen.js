@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     View,
     Text,
@@ -12,20 +12,110 @@ import {
     ScrollView
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as LocalAuthentication from 'expo-local-authentication';
+import * as SecureStore from 'expo-secure-store';
 import { CURRENCIES } from '../utils/currencies';
 import { theme } from '../theme';
 import { mobileApi } from '../services/api';
+
+const AUTH_TOKEN_KEY = 'fintrack_auth_token';
+const AUTH_EMAIL_KEY = 'fintrack_auth_email';
 
 export const AuthScreen = ({ onAuthSuccess }) => {
     const [isRegister, setIsRegister] = useState(false);
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const [currency, setCurrency] = useState('COP');
     const [apiUrl, setApiUrl] = useState(mobileApi.getBaseUrl());
     const [showConfig, setShowConfig] = useState(false);
     const [loading, setLoading] = useState(false);
     const [testingConnection, setTestingConnection] = useState(false);
     const [connectionStatus, setConnectionStatus] = useState(null);
+
+    const [hasBiometrics, setHasBiometrics] = useState(false);
+    const [hasStoredToken, setHasStoredToken] = useState(false);
+    const [biometricTypeLabel, setBiometricTypeLabel] = useState('Huella Digital');
+    const [biometricLoading, setBiometricLoading] = useState(false);
+
+    useEffect(() => {
+        checkBiometricsAvailability();
+    }, []);
+
+    const checkBiometricsAvailability = async () => {
+        try {
+            const hasHardware = await LocalAuthentication.hasHardwareAsync();
+            const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+            setHasBiometrics(hasHardware && isEnrolled);
+
+            if (hasHardware && isEnrolled) {
+                const types = await LocalAuthentication.supportedAuthenticationTypesAsync();
+                if (types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) {
+                    setBiometricTypeLabel('Face ID');
+                } else if (types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) {
+                    setBiometricTypeLabel('Huella Digital');
+                } else {
+                    setBiometricTypeLabel('Biometria');
+                }
+            }
+
+            const storedToken = await SecureStore.getItemAsync(AUTH_TOKEN_KEY);
+            setHasStoredToken(!!storedToken);
+
+            const storedEmail = await SecureStore.getItemAsync(AUTH_EMAIL_KEY);
+            if (storedEmail) {
+                setEmail(storedEmail);
+            }
+        } catch {
+            setHasBiometrics(false);
+            setHasStoredToken(false);
+        }
+    };
+
+    const handleBiometricAuth = async () => {
+        try {
+            setBiometricLoading(true);
+            const authResult = await LocalAuthentication.authenticateAsync({
+                promptMessage: 'Accede a FinTrack de forma segura',
+                fallbackLabel: 'Usar contrasena',
+                cancelLabel: 'Cancelar',
+                disableDeviceFallback: false
+            });
+
+            if (authResult.success) {
+                mobileApi.setBaseUrl(apiUrl);
+                const token = await SecureStore.getItemAsync(AUTH_TOKEN_KEY);
+                if (!token) {
+                    Alert.alert('Atencion', 'No hay credenciales guardadas. Inicia sesion con correo y contrasena.');
+                    setHasStoredToken(false);
+                    return;
+                }
+
+                mobileApi.setToken(token);
+                try {
+                    const profile = await mobileApi.getProfile();
+                    onAuthSuccess(profile);
+                } catch {
+                    await SecureStore.deleteItemAsync(AUTH_TOKEN_KEY);
+                    setHasStoredToken(false);
+                    Alert.alert('Sesion Expirada', 'Por favor ingresa tu correo y contrasena para renovar tu sesion.');
+                }
+            }
+        } catch {
+            Alert.alert('Error', 'No se pudo completar la autenticacion biometrica.');
+        } finally {
+            setBiometricLoading(false);
+        }
+    };
+
+    const handleTabSwitch = (registerMode) => {
+        setIsRegister(registerMode);
+        setPassword('');
+        setConfirmPassword('');
+    };
 
     const handleTestConnection = async () => {
         try {
@@ -39,7 +129,7 @@ export const AuthScreen = ({ onAuthSuccess }) => {
             } else {
                 Alert.alert(
                     'Error de Conexion',
-                    `No se pudo conectar a ${apiUrl}. Verifica que el backend este activo en tu computadora y que el telefono este en la misma red Wi-Fi.`
+                    `No se pudo conectar a ${apiUrl}. Verifica que el backend este activo y que el dispositivo tenga acceso a la red.`
                 );
             }
         } finally {
@@ -49,7 +139,12 @@ export const AuthScreen = ({ onAuthSuccess }) => {
 
     const handleSubmit = async () => {
         if (!email.trim()) {
-            Alert.alert('Atención', 'Ingresa tu correo electrónico');
+            Alert.alert('Atencion', 'Ingresa tu correo electronico');
+            return;
+        }
+
+        if (!password || password.trim().length < 6) {
+            Alert.alert('Atencion', 'La contrasena debe tener al menos 6 caracteres');
             return;
         }
 
@@ -60,31 +155,42 @@ export const AuthScreen = ({ onAuthSuccess }) => {
             let res;
             if (isRegister) {
                 if (!name.trim()) {
-                    Alert.alert('Atención', 'Ingresa tu nombre completo');
+                    Alert.alert('Atencion', 'Ingresa tu nombre completo');
+                    setLoading(false);
+                    return;
+                }
+                if (password !== confirmPassword) {
+                    Alert.alert('Atencion', 'Las contrasenas no coinciden');
                     setLoading(false);
                     return;
                 }
                 res = await mobileApi.register({
                     name: name.trim(),
                     email: email.trim().toLowerCase(),
+                    password: password.trim(),
                     currency
                 });
             } else {
-                res = await mobileApi.login(email.trim().toLowerCase());
+                res = await mobileApi.login(email.trim().toLowerCase(), password.trim());
             }
 
             if (res.token) {
                 mobileApi.setToken(res.token);
+                await SecureStore.setItemAsync(AUTH_TOKEN_KEY, res.token);
+                await SecureStore.setItemAsync(AUTH_EMAIL_KEY, email.trim().toLowerCase());
+                setHasStoredToken(true);
                 onAuthSuccess(res.user || { email, currency });
             } else {
-                throw new Error('No se recibió token de autenticación');
+                throw new Error('No se recibio token de autenticacion');
             }
         } catch (err) {
-            Alert.alert('Error', err.message || 'Error en la conexión con el servidor');
+            Alert.alert('Error', err.message || 'Error en la conexion con el servidor');
         } finally {
             setLoading(false);
         }
     };
+
+    const canUseBiometrics = hasBiometrics && hasStoredToken && !isRegister;
 
     return (
         <KeyboardAvoidingView
@@ -104,7 +210,7 @@ export const AuthScreen = ({ onAuthSuccess }) => {
                     <View style={styles.tabRow}>
                         <TouchableOpacity
                             style={[styles.tab, !isRegister && styles.tabActive]}
-                            onPress={() => setIsRegister(false)}
+                            onPress={() => handleTabSwitch(false)}
                         >
                             <Text style={[styles.tabText, !isRegister && styles.tabTextActive]}>
                                 Iniciar Sesion
@@ -113,13 +219,44 @@ export const AuthScreen = ({ onAuthSuccess }) => {
 
                         <TouchableOpacity
                             style={[styles.tab, isRegister && styles.tabActive]}
-                            onPress={() => setIsRegister(true)}
+                            onPress={() => handleTabSwitch(true)}
                         >
                             <Text style={[styles.tabText, isRegister && styles.tabTextActive]}>
                                 Registrarse
                             </Text>
                         </TouchableOpacity>
                     </View>
+
+                    {canUseBiometrics && (
+                        <View style={styles.biometricSection}>
+                            <TouchableOpacity
+                                style={styles.biometricBtn}
+                                onPress={handleBiometricAuth}
+                                disabled={biometricLoading || loading}
+                            >
+                                {biometricLoading ? (
+                                    <ActivityIndicator color="#FFFFFF" />
+                                ) : (
+                                    <View style={styles.biometricContent}>
+                                        <Ionicons
+                                            name={biometricTypeLabel === 'Face ID' ? 'scan-outline' : 'finger-print-outline'}
+                                            size={22}
+                                            color="#FFFFFF"
+                                        />
+                                        <Text style={styles.biometricBtnText}>
+                                            Ingresar con {biometricTypeLabel}
+                                        </Text>
+                                    </View>
+                                )}
+                            </TouchableOpacity>
+
+                            <View style={styles.dividerContainer}>
+                                <View style={styles.dividerLine} />
+                                <Text style={styles.dividerText}>o con contrasena</Text>
+                                <View style={styles.dividerLine} />
+                            </View>
+                        </View>
+                    )}
 
                     {isRegister && (
                         <View style={styles.formGroup}>
@@ -146,6 +283,60 @@ export const AuthScreen = ({ onAuthSuccess }) => {
                             placeholderTextColor={theme.colors.textSubtle}
                         />
                     </View>
+
+                    <View style={styles.formGroup}>
+                        <Text style={styles.label}>Contrasena</Text>
+                        <View style={styles.passwordInputContainer}>
+                            <TextInput
+                                style={styles.passwordInput}
+                                placeholder="Minimo 6 caracteres"
+                                secureTextEntry={!showPassword}
+                                value={password}
+                                onChangeText={setPassword}
+                                placeholderTextColor={theme.colors.textSubtle}
+                                autoCapitalize="none"
+                            />
+                            <TouchableOpacity
+                                style={styles.eyeBtn}
+                                onPress={() => setShowPassword(!showPassword)}
+                                accessibilityLabel="Alternar visibilidad de contrasena"
+                            >
+                                <Ionicons
+                                    name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                                    size={20}
+                                    color={theme.colors.textMuted}
+                                />
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+
+                    {isRegister && (
+                        <View style={styles.formGroup}>
+                            <Text style={styles.label}>Confirmar Contrasena</Text>
+                            <View style={styles.passwordInputContainer}>
+                                <TextInput
+                                    style={styles.passwordInput}
+                                    placeholder="Repite tu contrasena"
+                                    secureTextEntry={!showConfirmPassword}
+                                    value={confirmPassword}
+                                    onChangeText={setConfirmPassword}
+                                    placeholderTextColor={theme.colors.textSubtle}
+                                    autoCapitalize="none"
+                                />
+                                <TouchableOpacity
+                                    style={styles.eyeBtn}
+                                    onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+                                    accessibilityLabel="Alternar visibilidad de contrasena"
+                                >
+                                    <Ionicons
+                                        name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'}
+                                        size={20}
+                                        color={theme.colors.textMuted}
+                                    />
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+                    )}
 
                     {isRegister && (
                         <View style={styles.formGroup}>
@@ -228,7 +419,7 @@ export const AuthScreen = ({ onAuthSuccess }) => {
                                 </View>
                             )}
                             <Text style={styles.configHelp}>
-                                Computadora en red Wi-Fi: http://192.168.20.7:3001
+                                Servidor Cloud: https://fintrack-backend-pza5.onrender.com
                             </Text>
                         </View>
                     )}
@@ -311,6 +502,46 @@ const styles = StyleSheet.create({
         color: theme.colors.primary,
         fontWeight: '700'
     },
+    biometricSection: {
+        width: '100%',
+        marginBottom: 8
+    },
+    biometricBtn: {
+        width: '100%',
+        backgroundColor: theme.colors.emerald,
+        paddingVertical: 13,
+        borderRadius: theme.radii.md,
+        alignItems: 'center',
+        justifyContent: 'center'
+    },
+    biometricContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8
+    },
+    biometricBtnText: {
+        color: '#FFFFFF',
+        fontSize: 14,
+        fontWeight: '700'
+    },
+    dividerContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        width: '100%',
+        marginVertical: 14
+    },
+    dividerLine: {
+        flex: 1,
+        height: 1,
+        backgroundColor: theme.colors.border
+    },
+    dividerText: {
+        fontSize: 11,
+        color: theme.colors.textMuted,
+        paddingHorizontal: 10,
+        textTransform: 'uppercase',
+        fontWeight: '600'
+    },
     formGroup: {
         width: '100%',
         marginBottom: 14
@@ -330,6 +561,27 @@ const styles = StyleSheet.create({
         paddingVertical: 10,
         fontSize: 14,
         color: theme.colors.text
+    },
+    passwordInputContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: theme.colors.bg,
+        borderWidth: 1,
+        borderColor: theme.colors.border,
+        borderRadius: theme.radii.sm
+    },
+    passwordInput: {
+        flex: 1,
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+        fontSize: 14,
+        color: theme.colors.text
+    },
+    eyeBtn: {
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        justifyContent: 'center',
+        alignItems: 'center'
     },
     currencyRow: {
         flexDirection: 'row',

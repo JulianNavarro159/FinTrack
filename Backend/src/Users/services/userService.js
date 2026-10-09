@@ -4,7 +4,9 @@ const {
     findUserById,
     updateUserCurrency,
     updateUserProfile,
-    generateUserToken
+    generateUserToken,
+    hashPassword,
+    comparePassword
 } = require("../repositories/usersRepository");
 
 /**
@@ -60,23 +62,61 @@ const updateUserProfileService = async (id, data) => {
 };
 
 /**
- * Service to authenticate user directly by email.
+ * Service to authenticate user directly with verified credentials.
  * 
  * @param {string} email - Email address.
- * @param {string|null} password - Optional password.
+ * @param {string|null} password - Required password.
  * @returns {Promise<{ user: object, token: string }>} User and auth token.
  */
 const directLoginService = async (email, password = null) => {
-    let user = await findUserByEmail(email);
+    const user = await findUserByEmail(email);
     if (!user) {
-        const [newUser] = await findOrCreateUser({
-            name: email.split("@")[0],
-            email,
-            password
-        });
-        user = newUser;
+        const error = new Error("Invalid email or password");
+        error.status = 401;
+        throw error;
     }
+
+    if (!user.password) {
+        if (!password) {
+            const error = new Error("Password is required to secure this account");
+            error.status = 400;
+            throw error;
+        }
+        const hashedPassword = await hashPassword(password);
+        user.password = hashedPassword;
+        const token = generateUserToken(user);
+        user.tokenAuth = token;
+        await user.save();
+        return {
+            user: {
+                id: user.id,
+                name: user.name,
+                lastName: user.lastName,
+                email: user.email,
+                currency: user.currency,
+                profilephoto: user.profilephoto
+            },
+            token
+        };
+    }
+
+    if (!password) {
+        const error = new Error("Password is required");
+        error.status = 400;
+        throw error;
+    }
+
+    const isMatch = await comparePassword(password, user.password);
+    if (!isMatch) {
+        const error = new Error("Invalid email or password");
+        error.status = 401;
+        throw error;
+    }
+
     const token = generateUserToken(user);
+    user.tokenAuth = token;
+    await user.save();
+
     return {
         user: {
             id: user.id,

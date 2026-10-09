@@ -13,7 +13,25 @@
       "package": "com.juliannavarro.fintrack",
       "adaptiveIcon": {
         "backgroundColor": "#ffffff"
+      },
+      "permissions": [
+        "USE_BIOMETRIC",
+        "USE_FINGERPRINT"
+      ]
+    },
+    "extra": {
+      "eas": {
+        "projectId": "99ac6f3b-aa2d-4e2e-92b0-3181b7ab5df7"
       }
-    }
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "FinTrack requiere acceso a datos biometricos para el inicio de sesion seguro."
+        }
+      ]
+    ]
   }
 }

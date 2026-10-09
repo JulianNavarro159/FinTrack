@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { loginUserThunk, registerUserThunk, clearAuthError } from '../store/authSlice';
 import { CURRENCIES } from '../utils/currencies';
-import { Wallet, LogIn, UserPlus, Coins, Mail, User, AlertCircle } from 'lucide-react';
+import { Wallet, LogIn, UserPlus, Coins, Mail, User, AlertCircle, Lock, Eye, EyeOff } from 'lucide-react';
 import { useAuth0 } from '@auth0/auth0-react';
 
 export const AuthPage = () => {
@@ -12,23 +12,48 @@ export const AuthPage = () => {
 
     const [email, setEmail] = useState('');
     const [name, setName] = useState('');
+    const [password, setPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+    const [clientError, setClientError] = useState('');
     const [currency, setCurrency] = useState('COP');
 
     const auth0 = useAuth0();
 
+    const handleTabSwitch = (registerMode) => {
+        setIsRegister(registerMode);
+        setPassword('');
+        setConfirmPassword('');
+        setClientError('');
+        dispatch(clearAuthError());
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         dispatch(clearAuthError());
+        setClientError('');
+
+        if (password.length < 6) {
+            setClientError('La contraseña debe tener al menos 6 caracteres');
+            return;
+        }
 
         if (isRegister) {
+            if (password !== confirmPassword) {
+                setClientError('Las contraseñas no coinciden');
+                return;
+            }
             dispatch(registerUserThunk({
                 name: name.trim(),
                 email: email.trim().toLowerCase(),
+                password,
                 currency
             }));
         } else {
             dispatch(loginUserThunk({
-                email: email.trim().toLowerCase()
+                email: email.trim().toLowerCase(),
+                password
             }));
         }
     };
@@ -52,10 +77,10 @@ export const AuthPage = () => {
                     </p>
                 </div>
 
-                {error && (
+                {(error || clientError) && (
                     <div className="auth-error-banner">
                         <AlertCircle size={16} />
-                        <span>{error}</span>
+                        <span>{clientError || error}</span>
                     </div>
                 )}
 
@@ -63,10 +88,7 @@ export const AuthPage = () => {
                     <button
                         type="button"
                         className={`auth-tab ${!isRegister ? 'active' : ''}`}
-                        onClick={() => {
-                            setIsRegister(false);
-                            dispatch(clearAuthError());
-                        }}
+                        onClick={() => handleTabSwitch(false)}
                     >
                         <LogIn size={15} />
                         <span>Iniciar Sesión</span>
@@ -74,10 +96,7 @@ export const AuthPage = () => {
                     <button
                         type="button"
                         className={`auth-tab ${isRegister ? 'active' : ''}`}
-                        onClick={() => {
-                            setIsRegister(true);
-                            dispatch(clearAuthError());
-                        }}
+                        onClick={() => handleTabSwitch(true)}
                     >
                         <UserPlus size={15} />
                         <span>Registrarse</span>
@@ -112,8 +131,61 @@ export const AuthPage = () => {
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
                             className="form-input"
+                            autoComplete="username"
                         />
                     </div>
+
+                    <div className="form-group">
+                        <label className="form-label">
+                            <Lock size={14} className="inline-icon" /> Contraseña
+                        </label>
+                        <div className="password-input-wrap">
+                            <input
+                                type={showPassword ? 'text' : 'password'}
+                                required
+                                placeholder="Mínimo 6 caracteres"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                className="form-input"
+                                autoComplete={isRegister ? 'new-password' : 'current-password'}
+                            />
+                            <button
+                                type="button"
+                                className="password-toggle-btn"
+                                onClick={() => setShowPassword(!showPassword)}
+                                aria-label="Alternar visibilidad de contraseña"
+                            >
+                                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                            </button>
+                        </div>
+                    </div>
+
+                    {isRegister && (
+                        <div className="form-group">
+                            <label className="form-label">
+                                <Lock size={14} className="inline-icon" /> Confirmar Contraseña
+                            </label>
+                            <div className="password-input-wrap">
+                                <input
+                                    type={showConfirmPassword ? 'text' : 'password'}
+                                    required
+                                    placeholder="Repite tu contraseña"
+                                    value={confirmPassword}
+                                    onChange={(e) => setConfirmPassword(e.target.value)}
+                                    className="form-input"
+                                    autoComplete="new-password"
+                                />
+                                <button
+                                    type="button"
+                                    className="password-toggle-btn"
+                                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                                    aria-label="Alternar visibilidad de contraseña"
+                                >
+                                    {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                </button>
+                            </div>
+                        </div>
+                    )}
 
                     {isRegister && (
                         <div className="form-group">

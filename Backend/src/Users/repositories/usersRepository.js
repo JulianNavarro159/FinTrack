@@ -1,7 +1,32 @@
 const jwt = require("jsonwebtoken");
+const bcrypt = require("bcryptjs");
 const { User } = require("../../db");
 
 const JWT_SECRET = process.env.JWT_SECRET || "fintrack_jwt_secret_key";
+
+/**
+ * Hashes a plaintext password using bcrypt.
+ * 
+ * @param {string} plainPassword - Plaintext password to hash.
+ * @returns {Promise<string|null>} Hashed password or null.
+ */
+const hashPassword = async (plainPassword) => {
+    if (!plainPassword) return null;
+    const salt = await bcrypt.genSalt(10);
+    return await bcrypt.hash(plainPassword, salt);
+};
+
+/**
+ * Compares plaintext password against stored hash.
+ * 
+ * @param {string} plainPassword - Plaintext input.
+ * @param {string} hashedPassword - Stored hash.
+ * @returns {Promise<boolean>} Match result.
+ */
+const comparePassword = async (plainPassword, hashedPassword) => {
+    if (!plainPassword || !hashedPassword) return false;
+    return await bcrypt.compare(plainPassword, hashedPassword);
+};
 
 /**
  * Generates a signed JWT for a given user record.
@@ -22,7 +47,7 @@ const generateUserToken = (user) => {
 };
 
 /**
- * Finds an existing user or creates a new one, provisioning tokenAuth.
+ * Finds an existing user or creates a new one with hashed password.
  * 
  * @param {object} userData - User registration attributes.
  * @returns {Promise<[object, boolean]>} User instance and creation flag.
@@ -38,25 +63,28 @@ const findOrCreateUser = async ({
     isAdmin = false
 }) => {
     const normalizedEmail = email.trim().toLowerCase();
-    const [user, created] = await User.findOrCreate({
-        where: { email: normalizedEmail },
-        defaults: {
-            name,
-            lastName,
-            email: normalizedEmail,
-            currency: currency || "USD",
-            password,
-            profilephoto,
-            emailVerified,
-            isAdmin
-        }
+    const existingUser = await User.findOne({ where: { email: normalizedEmail } });
+    if (existingUser) {
+        return [existingUser, false];
+    }
+
+    const hashedPassword = password ? await hashPassword(password) : null;
+    const user = await User.create({
+        name,
+        lastName,
+        email: normalizedEmail,
+        currency: currency || "USD",
+        password: hashedPassword,
+        profilephoto,
+        emailVerified,
+        isAdmin
     });
 
     const token = generateUserToken(user);
     user.tokenAuth = token;
     await user.save();
 
-    return [user, created];
+    return [user, true];
 };
 
 /**
@@ -135,5 +163,7 @@ module.exports = {
     findUserByEmail,
     findUserById,
     updateUserCurrency,
-    updateUserProfile
+    updateUserProfile,
+    hashPassword,
+    comparePassword
 };

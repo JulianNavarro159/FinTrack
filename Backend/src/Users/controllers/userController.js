@@ -16,24 +16,33 @@ const {
  */
 const userRegister = async (req, res) => {
     try {
-        const { name, lastName, email, currency, emailVerified, isAdmin } = req.body;
+        const { name, lastName, email, password, currency, emailVerified, isAdmin } = req.body;
         const profilephoto = req.file ? req.file.path : (req.body.profilephoto || null);
 
         if (!email) {
             return res.status(400).json({ message: "Email is required" });
         }
 
+        if (!password || password.trim().length < 6) {
+            return res.status(400).json({ message: "Password must be at least 6 characters long" });
+        }
+
         const [user, created] = await registerOrLoginUserService({
             name,
             lastName,
             email,
+            password: password.trim(),
             currency: currency || "USD",
             profilephoto,
             emailVerified,
             isAdmin
         });
 
-        return res.status(created ? 201 : 200).json({
+        if (!created) {
+            return res.status(409).json({ message: "An account with this email already exists" });
+        }
+
+        return res.status(201).json({
             token: user.tokenAuth,
             user: {
                 id: user.id,
@@ -50,7 +59,7 @@ const userRegister = async (req, res) => {
 };
 
 /**
- * Handles direct login with email or credentials.
+ * Handles direct login with verified email and password credentials.
  * 
  * @param {import('express').Request} req - Express request.
  * @param {import('express').Response} res - Express response.
@@ -62,11 +71,15 @@ const userLogin = async (req, res) => {
         if (!email) {
             return res.status(400).json({ message: "Email is required" });
         }
+        if (!password) {
+            return res.status(400).json({ message: "Password is required" });
+        }
 
         const authData = await directLoginService(email, password);
         return res.status(200).json(authData);
     } catch (error) {
-        return res.status(500).json({ message: "Login failed", error: error.message });
+        const statusCode = error.status || (error.message.includes("Invalid") ? 401 : 500);
+        return res.status(statusCode).json({ message: error.message || "Login failed" });
     }
 };
 
