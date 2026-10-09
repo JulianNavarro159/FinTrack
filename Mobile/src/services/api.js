@@ -28,10 +28,14 @@ const DEFAULT_API_URL = resolveDefaultBaseUrl();
 
 let currentBaseUrl = DEFAULT_API_URL;
 let currentToken = null;
+let cachedCategories = null;
+const summaryCache = new Map();
 
 export const mobileApi = {
     setBaseUrl(url) {
         if (url) currentBaseUrl = url.trim().replace(/\/$/, '');
+        summaryCache.clear();
+        cachedCategories = null;
     },
 
     getBaseUrl() {
@@ -40,10 +44,19 @@ export const mobileApi = {
 
     setToken(token) {
         currentToken = token;
+        if (!token) {
+            summaryCache.clear();
+            cachedCategories = null;
+        }
     },
 
     getToken() {
         return currentToken;
+    },
+
+    clearCache() {
+        summaryCache.clear();
+        cachedCategories = null;
     },
 
     async pingServer() {
@@ -70,9 +83,14 @@ export const mobileApi = {
             headers['Authorization'] = `Bearer ${currentToken}`;
         }
 
+        const controller = new AbortController();
+        const timeoutMs = options.timeoutMs || 10000;
+        const timeoutTimer = setTimeout(() => controller.abort(), timeoutMs);
+
         const config = {
             method: options.method || 'GET',
-            headers
+            headers,
+            signal: controller.signal
         };
         if (options.body) {
             config.body = JSON.stringify(options.body);
@@ -82,7 +100,12 @@ export const mobileApi = {
         try {
             response = await fetch(url, config);
         } catch (networkError) {
-            throw new Error(`Unable to reach server at ${currentBaseUrl}. Check Wi-Fi connection and backend status.`);
+            if (networkError.name === 'AbortError') {
+                throw new Error('Tiempo de espera agotado. Verifica tu conexion a internet.');
+            }
+            throw new Error(`No se pudo conectar al servidor en ${currentBaseUrl}.`);
+        } finally {
+            clearTimeout(timeoutTimer);
         }
 
         const data = await response.json().catch(() => ({}));
@@ -93,6 +116,7 @@ export const mobileApi = {
     },
 
     login(email, password = null) {
+        this.clearCache();
         return this.request('/users/login', {
             method: 'POST',
             body: { email, password }
@@ -100,6 +124,7 @@ export const mobileApi = {
     },
 
     register(userData) {
+        this.clearCache();
         return this.request('/users/register', {
             method: 'POST',
             body: userData
@@ -118,19 +143,35 @@ export const mobileApi = {
     },
 
     updateCurrency(currency) {
+        summaryCache.clear();
         return this.request('/users/currency', {
             method: 'PATCH',
             body: { currency }
         });
     },
 
-    getCategories() {
-        return this.request('/categories');
+    async getCategories(forceRefresh = false) {
+        if (!forceRefresh && cachedCategories && cachedCategories.length > 0) {
+            return cachedCategories;
+        }
+        const data = await this.request('/categories');
+        cachedCategories = data;
+        return data;
     },
 
-    getMonthlySummary(month) {
+    async getMonthlySummary(month, forceRefresh = false) {
+        const cacheKey = month || 'current';
+        const now = Date.now();
+        const cached = summaryCache.get(cacheKey);
+
+        if (!forceRefresh && cached && (now - cached.timestamp < 45000)) {
+            return cached.data;
+        }
+
         const query = month ? `?month=${month}` : '';
-        return this.request(`/transaction/summary${query}`);
+        const data = await this.request(`/transaction/summary${query}`);
+        summaryCache.set(cacheKey, { timestamp: now, data });
+        return data;
     },
 
     getTransactions(filters = {}) {
@@ -144,15 +185,17 @@ export const mobileApi = {
         return this.request(`/transaction${query}`);
     },
 
-    createTransaction(data) {
-        return this.request('/transaction', {
+    async createTransaction(data) {
+        summaryCache.clear();
+        return await this.request('/transaction', {
             method: 'POST',
             body: data
         });
     },
 
-    deleteTransaction(id) {
-        return this.request(`/transaction/${id}`, {
+    async deleteTransaction(id) {
+        summaryCache.clear();
+        return await this.request(`/transaction/${id}`, {
             method: 'DELETE'
         });
     }

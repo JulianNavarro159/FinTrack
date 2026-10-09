@@ -35,6 +35,11 @@ function FinTrackMain() {
     const [transactionModalType, setTransactionModalType] = useState('expense');
     const [isCurrencyModalOpen, setIsCurrencyModalOpen] = useState(false);
     const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+    const [refreshSignal, setRefreshSignal] = useState(0);
+
+    const handleTransactionChanged = () => {
+        setRefreshSignal((prev) => prev + 1);
+    };
 
     useEffect(() => {
         if (isAuthenticated) {
@@ -62,6 +67,7 @@ function FinTrackMain() {
 
     const handleCreateTransaction = async (data) => {
         await mobileApi.createTransaction(data);
+        handleTransactionChanged();
         Alert.alert('Exito', data.type === 'income' ? 'Ingreso registrado con exito' : 'Gasto registrado con exito');
     };
 
@@ -143,12 +149,16 @@ function FinTrackMain() {
                         user={user}
                         onOpenTransactionModal={handleOpenTransaction}
                         onOpenCurrencyModal={() => setIsCurrencyModalOpen(true)}
+                        refreshSignal={refreshSignal}
+                        onTransactionChanged={handleTransactionChanged}
                     />
                 ) : (
                     <HistoryScreen
                         user={user}
                         categories={categories}
                         onOpenTransactionModal={handleOpenTransaction}
+                        refreshSignal={refreshSignal}
+                        onTransactionChanged={handleTransactionChanged}
                     />
                 )}
             </View>

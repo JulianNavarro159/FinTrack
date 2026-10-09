@@ -10,8 +10,48 @@ import {
     ActivityIndicator,
     Alert
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { getCurrencySymbol, PAYMENT_METHODS } from '../utils/currencies';
 import { theme } from '../theme';
+
+const getAmountPresets = (curr) => {
+    if (['COP', 'CLP', 'ARS', 'PYG'].includes(curr)) {
+        return [
+            { label: '+10K', value: 10000 },
+            { label: '+20K', value: 20000 },
+            { label: '+50K', value: 50000 },
+            { label: '+100K', value: 100000 }
+        ];
+    }
+    return [
+        { label: '+10', value: 10 },
+        { label: '+25', value: 25 },
+        { label: '+50', value: 50 },
+        { label: '+100', value: 100 }
+    ];
+};
+
+const getTodayStr = () => new Date().toISOString().split('T')[0];
+const getYesterdayStr = () => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return d.toISOString().split('T')[0];
+};
+
+const getMethodIcon = (methodId) => {
+    switch (methodId) {
+        case 'cash':
+            return 'cash-outline';
+        case 'credit_card':
+            return 'card-outline';
+        case 'debit_card':
+            return 'wallet-outline';
+        case 'transfer':
+            return 'swap-horizontal-outline';
+        default:
+            return 'card-outline';
+    }
+};
 
 export const TransactionModal = ({
     visible,
@@ -26,7 +66,7 @@ export const TransactionModal = ({
     const [idCategory, setIdCategory] = useState(null);
     const [paymentMethod, setPaymentMethod] = useState('cash');
     const [description, setDescription] = useState('');
-    const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+    const [date, setDate] = useState(getTodayStr());
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     useEffect(() => {
@@ -35,7 +75,7 @@ export const TransactionModal = ({
             setAmount('');
             setDescription('');
             setPaymentMethod('cash');
-            setDate(new Date().toISOString().split('T')[0]);
+            setDate(getTodayStr());
         }
     }, [visible, initialType]);
 
@@ -49,15 +89,20 @@ export const TransactionModal = ({
         }
     }, [type, categories]);
 
+    const handleAddPreset = (val) => {
+        const currentVal = parseFloat(amount) || 0;
+        setAmount(String(currentVal + val));
+    };
+
     const handleSave = async () => {
         const parsedAmount = parseFloat(amount);
         if (isNaN(parsedAmount) || parsedAmount <= 0) {
-            Alert.alert('Atención', 'Ingresa un monto válido mayor a cero');
+            Alert.alert('Atencion', 'Ingresa un monto valido mayor a cero');
             return;
         }
 
         if (!idCategory) {
-            Alert.alert('Atención', 'Selecciona una categoría');
+            Alert.alert('Atencion', 'Selecciona una categoria');
             return;
         }
 
@@ -73,7 +118,7 @@ export const TransactionModal = ({
             });
             onClose();
         } catch (error) {
-            Alert.alert('Error', error.message || 'No se pudo guardar la transacción');
+            Alert.alert('Error', error.message || 'No se pudo guardar la transaccion');
         } finally {
             setIsSubmitting(false);
         }
@@ -81,6 +126,9 @@ export const TransactionModal = ({
 
     const isIncome = type === 'income';
     const symbol = getCurrencySymbol(currency);
+    const presets = getAmountPresets(currency);
+    const today = getTodayStr();
+    const yesterday = getYesterdayStr();
 
     return (
         <Modal
@@ -92,11 +140,18 @@ export const TransactionModal = ({
             <View style={styles.overlay}>
                 <View style={styles.card}>
                     <View style={styles.header}>
-                        <Text style={styles.title}>
-                            {isIncome ? 'Registrar Ingreso' : 'Registrar Gasto'}
-                        </Text>
+                        <View style={styles.headerTitleWrap}>
+                            <Ionicons
+                                name={isIncome ? 'arrow-down-circle' : 'arrow-up-circle'}
+                                size={22}
+                                color={isIncome ? theme.colors.emerald : theme.colors.rose}
+                            />
+                            <Text style={styles.title}>
+                                {isIncome ? 'Registrar Ingreso' : 'Registrar Gasto'}
+                            </Text>
+                        </View>
                         <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-                            <Text style={styles.closeBtnText}>✕</Text>
+                            <Ionicons name="close" size={20} color={theme.colors.textMuted} />
                         </TouchableOpacity>
                     </View>
 
@@ -106,8 +161,13 @@ export const TransactionModal = ({
                                 style={[styles.toggleBtn, isIncome && styles.toggleIncomeActive]}
                                 onPress={() => setType('income')}
                             >
-                                <Text style={[styles.toggleText, isIncome && styles.toggleTextActive]}>
-                                    + Ingreso
+                                <Ionicons
+                                    name="arrow-down-circle-outline"
+                                    size={16}
+                                    color={isIncome ? theme.colors.emerald : theme.colors.textMuted}
+                                />
+                                <Text style={[styles.toggleText, isIncome && styles.toggleTextActiveIncome]}>
+                                    Ingreso
                                 </Text>
                             </TouchableOpacity>
 
@@ -115,8 +175,13 @@ export const TransactionModal = ({
                                 style={[styles.toggleBtn, !isIncome && styles.toggleExpenseActive]}
                                 onPress={() => setType('expense')}
                             >
-                                <Text style={[styles.toggleText, !isIncome && styles.toggleTextActive]}>
-                                    - Gasto
+                                <Ionicons
+                                    name="arrow-up-circle-outline"
+                                    size={16}
+                                    color={!isIncome ? theme.colors.rose : theme.colors.textMuted}
+                                />
+                                <Text style={[styles.toggleText, !isIncome && styles.toggleTextActiveExpense]}>
+                                    Gasto
                                 </Text>
                             </TouchableOpacity>
                         </View>
@@ -127,29 +192,65 @@ export const TransactionModal = ({
                             <TextInput
                                 style={styles.amountInput}
                                 placeholder="0.00"
-                                keyboardType="numeric"
+                                keyboardType="decimal-pad"
                                 value={amount}
                                 onChangeText={setAmount}
                                 placeholderTextColor={theme.colors.textSubtle}
                             />
+                            {amount.length > 0 && (
+                                <TouchableOpacity onPress={() => setAmount('')} style={styles.clearBtn}>
+                                    <Ionicons name="close-circle" size={18} color={theme.colors.textMuted} />
+                                </TouchableOpacity>
+                            )}
                         </View>
 
-                        <Text style={styles.label}>Fecha (AAAA-MM-DD)</Text>
-                        <TextInput
-                            style={styles.textInput}
-                            value={date}
-                            onChangeText={setDate}
-                            placeholder="YYYY-MM-DD"
-                        />
+                        <View style={styles.presetRow}>
+                            {presets.map((p) => (
+                                <TouchableOpacity
+                                    key={p.label}
+                                    style={styles.presetChip}
+                                    onPress={() => handleAddPreset(p.value)}
+                                >
+                                    <Text style={styles.presetText}>{p.label}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
 
-                        <Text style={styles.label}>Categoría</Text>
+                        <Text style={styles.label}>Fecha</Text>
+                        <View style={styles.dateSelectorRow}>
+                            <TouchableOpacity
+                                style={[styles.dateShortcut, date === today && styles.dateShortcutActive]}
+                                onPress={() => setDate(today)}
+                            >
+                                <Text style={[styles.dateShortcutText, date === today && styles.dateShortcutTextActive]}>
+                                    Hoy
+                                </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[styles.dateShortcut, date === yesterday && styles.dateShortcutActive]}
+                                onPress={() => setDate(yesterday)}
+                            >
+                                <Text style={[styles.dateShortcutText, date === yesterday && styles.dateShortcutTextActive]}>
+                                    Ayer
+                                </Text>
+                            </TouchableOpacity>
+                            <TextInput
+                                style={styles.dateInput}
+                                value={date}
+                                onChangeText={setDate}
+                                placeholder="YYYY-MM-DD"
+                                placeholderTextColor={theme.colors.textSubtle}
+                            />
+                        </View>
+
+                        <Text style={styles.label}>Categoria</Text>
                         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalChips}>
                             {availableCategories.map((c) => {
                                 const selected = idCategory === c.id;
                                 return (
                                     <TouchableOpacity
                                         key={c.id}
-                                        style={[styles.categoryChip, selected && styles.chipActive]}
+                                        style={[styles.categoryChip, selected && (isIncome ? styles.chipIncomeActive : styles.chipExpenseActive)]}
                                         onPress={() => setIdCategory(c.id)}
                                     >
                                         <Text style={[styles.categoryChipText, selected && styles.chipActiveText]}>
@@ -161,17 +262,23 @@ export const TransactionModal = ({
                         </ScrollView>
 
                         <Text style={styles.label}>
-                            {isIncome ? 'Forma de recepción' : 'Método de pago'}
+                            {isIncome ? 'Forma de recepcion' : 'Metodo de pago'}
                         </Text>
                         <View style={styles.paymentGrid}>
                             {PAYMENT_METHODS.map((m) => {
                                 const selected = paymentMethod === m.id;
+                                const iconName = getMethodIcon(m.id);
                                 return (
                                     <TouchableOpacity
                                         key={m.id}
                                         style={[styles.paymentChip, selected && styles.paymentChipActive]}
                                         onPress={() => setPaymentMethod(m.id)}
                                     >
+                                        <Ionicons
+                                            name={iconName}
+                                            size={15}
+                                            color={selected ? theme.colors.primary : theme.colors.textMuted}
+                                        />
                                         <Text style={[styles.paymentChipText, selected && styles.paymentChipActiveText]}>
                                             {isIncome ? m.incomeLabel : m.expenseLabel}
                                         </Text>
@@ -180,10 +287,10 @@ export const TransactionModal = ({
                             })}
                         </View>
 
-                        <Text style={styles.label}>Descripción (opcional)</Text>
+                        <Text style={styles.label}>Descripcion (opcional)</Text>
                         <TextInput
                             style={styles.textInput}
-                            placeholder="Ej. Salario, compras del supermercado..."
+                            placeholder="Ej. Mercado, transporte, almuerzo..."
                             value={description}
                             onChangeText={setDescription}
                             placeholderTextColor={theme.colors.textSubtle}
@@ -234,55 +341,65 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         marginBottom: 16
     },
+    headerTitleWrap: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8
+    },
     title: {
         fontSize: 18,
         fontWeight: '700',
         color: theme.colors.text
     },
     closeBtn: {
-        padding: 4
-    },
-    closeBtnText: {
-        fontSize: 18,
-        color: theme.colors.textMuted
+        padding: 6
     },
     toggleRow: {
         flexDirection: 'row',
         backgroundColor: theme.colors.bg,
         padding: 4,
         borderRadius: theme.radii.md,
-        marginBottom: 16
+        marginBottom: 14,
+        gap: 6
     },
     toggleBtn: {
         flex: 1,
-        paddingVertical: 10,
+        flexDirection: 'row',
         alignItems: 'center',
-        borderRadius: theme.radii.sm
+        justifyContent: 'center',
+        paddingVertical: 10,
+        borderRadius: theme.radii.sm,
+        gap: 6
     },
     toggleIncomeActive: {
         backgroundColor: theme.colors.card,
+        elevation: 2,
         shadowColor: '#000',
-        shadowOpacity: 0.05,
-        shadowRadius: 4,
-        elevation: 2
+        shadowOpacity: 0.06,
+        shadowRadius: 4
     },
     toggleExpenseActive: {
         backgroundColor: theme.colors.card,
+        elevation: 2,
         shadowColor: '#000',
-        shadowOpacity: 0.05,
-        shadowRadius: 4,
-        elevation: 2
+        shadowOpacity: 0.06,
+        shadowRadius: 4
     },
     toggleText: {
+        fontSize: 13,
         fontWeight: '600',
         color: theme.colors.textMuted
     },
-    toggleTextActive: {
-        color: theme.colors.text,
+    toggleTextActiveIncome: {
+        color: theme.colors.emerald,
+        fontWeight: '700'
+    },
+    toggleTextActiveExpense: {
+        color: theme.colors.rose,
         fontWeight: '700'
     },
     label: {
-        fontSize: 13,
+        fontSize: 12,
         fontWeight: '600',
         color: theme.colors.textMuted,
         marginBottom: 6,
@@ -295,29 +412,79 @@ const styles = StyleSheet.create({
         borderWidth: 1.5,
         borderColor: theme.colors.border,
         borderRadius: theme.radii.md,
-        paddingHorizontal: 12,
+        paddingHorizontal: 14,
         paddingVertical: 8
     },
     currencySymbol: {
-        fontSize: 20,
-        fontWeight: '700',
-        color: theme.colors.textMuted,
+        fontSize: 22,
+        fontWeight: '800',
+        color: theme.colors.primary,
         marginRight: 6
     },
     amountInput: {
         flex: 1,
-        fontSize: 22,
-        fontWeight: '700',
+        fontSize: 24,
+        fontWeight: '800',
         color: theme.colors.text
     },
-    textInput: {
+    clearBtn: {
+        padding: 4
+    },
+    presetRow: {
+        flexDirection: 'row',
+        gap: 8,
+        marginTop: 8
+    },
+    presetChip: {
+        flex: 1,
+        backgroundColor: theme.colors.bg,
+        borderWidth: 1,
+        borderColor: theme.colors.border,
+        borderRadius: theme.radii.sm,
+        paddingVertical: 6,
+        alignItems: 'center',
+        justifyContent: 'center'
+    },
+    presetText: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: theme.colors.textMuted
+    },
+    dateSelectorRow: {
+        flexDirection: 'row',
+        gap: 8,
+        alignItems: 'center'
+    },
+    dateShortcut: {
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+        backgroundColor: theme.colors.bg,
+        borderWidth: 1,
+        borderColor: theme.colors.border,
+        borderRadius: theme.radii.sm
+    },
+    dateShortcutActive: {
+        backgroundColor: theme.colors.primaryLight,
+        borderColor: theme.colors.primary
+    },
+    dateShortcutText: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: theme.colors.textMuted
+    },
+    dateShortcutTextActive: {
+        color: theme.colors.primary,
+        fontWeight: '700'
+    },
+    dateInput: {
+        flex: 1,
         backgroundColor: theme.colors.bg,
         borderWidth: 1,
         borderColor: theme.colors.border,
         borderRadius: theme.radii.sm,
         paddingHorizontal: 12,
-        paddingVertical: 10,
-        fontSize: 14,
+        paddingVertical: 9,
+        fontSize: 13,
         color: theme.colors.text
     },
     horizontalChips: {
@@ -333,25 +500,33 @@ const styles = StyleSheet.create({
         borderColor: theme.colors.border,
         marginRight: 8
     },
-    chipActive: {
-        backgroundColor: theme.colors.primaryLight,
-        borderColor: theme.colors.primary
+    chipIncomeActive: {
+        backgroundColor: theme.colors.emeraldLight,
+        borderColor: theme.colors.emerald
+    },
+    chipExpenseActive: {
+        backgroundColor: theme.colors.roseLight,
+        borderColor: theme.colors.rose
     },
     categoryChipText: {
-        fontSize: 13,
+        fontSize: 12,
         color: theme.colors.textMuted,
-        fontWeight: '500'
+        fontWeight: '600'
     },
     chipActiveText: {
-        color: theme.colors.primary,
+        color: theme.colors.text,
         fontWeight: '700'
     },
     paymentGrid: {
         flexDirection: 'row',
         flexWrap: 'wrap',
-        gap: 8
+        gap: 8,
+        marginBottom: 4
     },
     paymentChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
         paddingHorizontal: 12,
         paddingVertical: 8,
         borderRadius: theme.radii.sm,
@@ -360,16 +535,27 @@ const styles = StyleSheet.create({
         borderColor: theme.colors.border
     },
     paymentChipActive: {
-        borderColor: theme.colors.primary,
-        backgroundColor: theme.colors.primaryLight
+        backgroundColor: theme.colors.primaryLight,
+        borderColor: theme.colors.primary
     },
     paymentChipText: {
         fontSize: 12,
-        color: theme.colors.text
+        fontWeight: '600',
+        color: theme.colors.textMuted
     },
     paymentChipActiveText: {
         color: theme.colors.primary,
         fontWeight: '700'
+    },
+    textInput: {
+        backgroundColor: theme.colors.bg,
+        borderWidth: 1,
+        borderColor: theme.colors.border,
+        borderRadius: theme.radii.sm,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        fontSize: 13,
+        color: theme.colors.text
     },
     footer: {
         flexDirection: 'row',
@@ -391,7 +577,9 @@ const styles = StyleSheet.create({
     btnSubmit: {
         paddingVertical: 12,
         paddingHorizontal: 22,
-        borderRadius: theme.radii.sm
+        borderRadius: theme.radii.sm,
+        alignItems: 'center',
+        justifyContent: 'center'
     },
     btnIncome: {
         backgroundColor: theme.colors.emerald
@@ -401,6 +589,7 @@ const styles = StyleSheet.create({
     },
     btnSubmitText: {
         color: '#FFFFFF',
-        fontWeight: '700'
+        fontWeight: '700',
+        fontSize: 14
     }
 });

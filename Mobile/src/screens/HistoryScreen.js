@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
     View,
     Text,
@@ -15,7 +15,13 @@ import { formatCurrency, getCurrencySymbol, getPaymentMethodLabel, PAYMENT_METHO
 import { theme } from '../theme';
 import { mobileApi } from '../services/api';
 
-export const HistoryScreen = ({ user, categories = [], onOpenTransactionModal }) => {
+export const HistoryScreen = ({
+    user,
+    categories = [],
+    onOpenTransactionModal,
+    refreshSignal = 0,
+    onTransactionChanged
+}) => {
     const currency = user?.currency || 'USD';
     const [transactions, setTransactions] = useState([]);
     const [summary, setSummary] = useState({ totalIncome: 0, totalExpense: 0, netBalance: 0 });
@@ -26,6 +32,24 @@ export const HistoryScreen = ({ user, categories = [], onOpenTransactionModal })
     const [categoryFilter, setCategoryFilter] = useState('');
     const [methodFilter, setMethodFilter] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
+    const [debouncedSearch, setDebouncedSearch] = useState('');
+
+    const debounceTimer = useRef(null);
+
+    const handleSearchChange = (text) => {
+        setSearchQuery(text);
+        if (debounceTimer.current) {
+            clearTimeout(debounceTimer.current);
+        }
+        debounceTimer.current = setTimeout(() => {
+            setDebouncedSearch(text);
+        }, 300);
+    };
+
+    const handleClearSearch = () => {
+        setSearchQuery('');
+        setDebouncedSearch('');
+    };
 
     const loadTransactions = useCallback(async () => {
         try {
@@ -34,7 +58,7 @@ export const HistoryScreen = ({ user, categories = [], onOpenTransactionModal })
                 type: typeFilter,
                 idCategory: categoryFilter,
                 paymentMethod: methodFilter,
-                description: searchQuery
+                description: debouncedSearch.trim()
             });
             setTransactions(data.transactions || []);
             if (data.summary) {
@@ -46,11 +70,11 @@ export const HistoryScreen = ({ user, categories = [], onOpenTransactionModal })
             setLoading(false);
             setRefreshing(false);
         }
-    }, [typeFilter, categoryFilter, methodFilter, searchQuery]);
+    }, [typeFilter, categoryFilter, methodFilter, debouncedSearch]);
 
     useEffect(() => {
         loadTransactions();
-    }, [loadTransactions]);
+    }, [loadTransactions, refreshSignal]);
 
     const onRefresh = () => {
         setRefreshing(true);
@@ -60,7 +84,7 @@ export const HistoryScreen = ({ user, categories = [], onOpenTransactionModal })
     const handleDelete = (id, desc) => {
         Alert.alert(
             'Eliminar movimiento',
-            `¿Estás seguro de eliminar "${desc || 'este movimiento'}"?`,
+            `Deseas eliminar "${desc || 'este movimiento'}"?`,
             [
                 { text: 'Cancelar', style: 'cancel' },
                 {
@@ -70,6 +94,9 @@ export const HistoryScreen = ({ user, categories = [], onOpenTransactionModal })
                         try {
                             await mobileApi.deleteTransaction(id);
                             loadTransactions();
+                            if (onTransactionChanged) {
+                                onTransactionChanged();
+                            }
                         } catch (err) {
                             Alert.alert('Error', err.message || 'No se pudo eliminar');
                         }
@@ -82,13 +109,21 @@ export const HistoryScreen = ({ user, categories = [], onOpenTransactionModal })
     return (
         <View style={styles.container}>
             <View style={styles.searchHeader}>
-                <TextInput
-                    style={styles.searchInput}
-                    placeholder="Buscar descripción..."
-                    value={searchQuery}
-                    onChangeText={setSearchQuery}
-                    placeholderTextColor={theme.colors.textSubtle}
-                />
+                <View style={styles.searchBarWrap}>
+                    <Ionicons name="search-outline" size={18} color={theme.colors.textMuted} style={styles.searchIcon} />
+                    <TextInput
+                        style={styles.searchInput}
+                        placeholder="Buscar por descripcion..."
+                        value={searchQuery}
+                        onChangeText={handleSearchChange}
+                        placeholderTextColor={theme.colors.textSubtle}
+                    />
+                    {searchQuery.length > 0 && (
+                        <TouchableOpacity onPress={handleClearSearch} style={styles.searchClearBtn}>
+                            <Ionicons name="close-circle" size={16} color={theme.colors.textMuted} />
+                        </TouchableOpacity>
+                    )}
+                </View>
             </View>
 
             <View style={styles.filterPillsRow}>
@@ -105,6 +140,11 @@ export const HistoryScreen = ({ user, categories = [], onOpenTransactionModal })
                     style={[styles.filterPill, typeFilter === 'income' && styles.filterPillIncomeActive]}
                     onPress={() => setTypeFilter('income')}
                 >
+                    <Ionicons
+                        name="arrow-down-circle-outline"
+                        size={14}
+                        color={typeFilter === 'income' ? theme.colors.emerald : theme.colors.textMuted}
+                    />
                     <Text style={[styles.filterPillText, typeFilter === 'income' && styles.filterPillIncomeTextActive]}>
                         Ingresos
                     </Text>
@@ -114,6 +154,11 @@ export const HistoryScreen = ({ user, categories = [], onOpenTransactionModal })
                     style={[styles.filterPill, typeFilter === 'expense' && styles.filterPillExpenseActive]}
                     onPress={() => setTypeFilter('expense')}
                 >
+                    <Ionicons
+                        name="arrow-up-circle-outline"
+                        size={14}
+                        color={typeFilter === 'expense' ? theme.colors.rose : theme.colors.textMuted}
+                    />
                     <Text style={[styles.filterPillText, typeFilter === 'expense' && styles.filterPillExpenseTextActive]}>
                         Gastos
                     </Text>
@@ -125,12 +170,14 @@ export const HistoryScreen = ({ user, categories = [], onOpenTransactionModal })
                     <Text style={styles.statLabel}>Movimientos</Text>
                     <Text style={styles.statNum}>{transactions.length}</Text>
                 </View>
+                <View style={styles.statDivider} />
                 <View style={styles.statBox}>
                     <Text style={styles.statLabel}>Ingresos</Text>
                     <Text style={[styles.statNum, styles.textEmerald]}>
                         +{formatCurrency(summary.totalIncome, currency)}
                     </Text>
                 </View>
+                <View style={styles.statDivider} />
                 <View style={styles.statBox}>
                     <Text style={styles.statLabel}>Gastos</Text>
                     <Text style={[styles.statNum, styles.textRose]}>
@@ -145,10 +192,20 @@ export const HistoryScreen = ({ user, categories = [], onOpenTransactionModal })
                 </View>
             ) : transactions.length === 0 ? (
                 <View style={styles.emptyWrap}>
-                    <Text style={styles.emptyTitle}>No hay movimientos registrados</Text>
+                    <Ionicons name="receipt-outline" size={40} color={theme.colors.textSubtle} />
+                    <Text style={styles.emptyTitle}>No hay movimientos</Text>
                     <Text style={styles.emptySubtitle}>
-                        Ajusta los filtros o registra uno nuevo con los botones
+                        No se encontraron registros con los filtros actuales.
                     </Text>
+                    {onOpenTransactionModal && (
+                        <TouchableOpacity
+                            style={styles.emptyAddBtn}
+                            onPress={() => onOpenTransactionModal('expense')}
+                        >
+                            <Ionicons name="add" size={18} color="#FFFFFF" />
+                            <Text style={styles.emptyAddBtnText}>Registrar Movimiento</Text>
+                        </TouchableOpacity>
+                    )}
                 </View>
             ) : (
                 <FlatList
@@ -156,21 +213,24 @@ export const HistoryScreen = ({ user, categories = [], onOpenTransactionModal })
                     keyExtractor={(item) => String(item.id)}
                     refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
                     contentContainerStyle={styles.listContent}
+                    showsVerticalScrollIndicator={false}
                     renderItem={({ item }) => {
                         const isIncome = item.type === 'income';
                         return (
                             <View style={styles.trxRow}>
                                 <View style={styles.trxLeft}>
                                     <View style={[styles.badge, isIncome ? styles.badgeIncome : styles.badgeExpense]}>
-                                        <Text style={isIncome ? styles.badgeTextIncome : styles.badgeTextExpense}>
-                                            {isIncome ? '↗' : '↘'}
-                                        </Text>
+                                        <Ionicons
+                                            name={isIncome ? 'arrow-down' : 'arrow-up'}
+                                            size={15}
+                                            color={isIncome ? theme.colors.emerald : theme.colors.rose}
+                                        />
                                     </View>
                                     <View style={styles.trxInfo}>
-                                        <Text style={styles.trxTitle}>
+                                        <Text style={styles.trxTitle} numberOfLines={1}>
                                             {item.description || (isIncome ? 'Ingreso' : 'Gasto')}
                                         </Text>
-                                        <Text style={styles.trxMeta}>
+                                        <Text style={styles.trxMeta} numberOfLines={1}>
                                             {item.categoryFinance?.name || 'General'} • {getPaymentMethodLabel(item.paymentMethod, item.type)} • {item.date}
                                         </Text>
                                     </View>
@@ -182,6 +242,7 @@ export const HistoryScreen = ({ user, categories = [], onOpenTransactionModal })
                                     <TouchableOpacity
                                         onPress={() => handleDelete(item.id, item.description)}
                                         style={styles.deleteBtn}
+                                        accessibilityLabel="Eliminar movimiento"
                                     >
                                         <Ionicons name="trash-outline" size={16} color={theme.colors.rose} />
                                     </TouchableOpacity>
@@ -205,15 +266,26 @@ const styles = StyleSheet.create({
         paddingTop: 12,
         paddingBottom: 6
     },
-    searchInput: {
+    searchBarWrap: {
+        flexDirection: 'row',
+        alignItems: 'center',
         backgroundColor: theme.colors.card,
         borderWidth: 1,
         borderColor: theme.colors.border,
-        borderRadius: theme.radii.sm,
-        paddingHorizontal: 12,
+        borderRadius: theme.radii.md,
+        paddingHorizontal: 12
+    },
+    searchIcon: {
+        marginRight: 8
+    },
+    searchInput: {
+        flex: 1,
         paddingVertical: 10,
         fontSize: 14,
         color: theme.colors.text
+    },
+    searchClearBtn: {
+        padding: 4
     },
     filterPillsRow: {
         flexDirection: 'row',
@@ -222,7 +294,10 @@ const styles = StyleSheet.create({
         marginVertical: 10
     },
     filterPill: {
-        paddingVertical: 6,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingVertical: 7,
         paddingHorizontal: 14,
         borderRadius: theme.radii.full,
         backgroundColor: theme.colors.card,
@@ -261,6 +336,7 @@ const styles = StyleSheet.create({
     summaryBanner: {
         flexDirection: 'row',
         justifyContent: 'space-between',
+        alignItems: 'center',
         backgroundColor: theme.colors.card,
         marginHorizontal: 16,
         padding: 12,
@@ -270,7 +346,13 @@ const styles = StyleSheet.create({
         marginBottom: 10
     },
     statBox: {
+        flex: 1,
         alignItems: 'center'
+    },
+    statDivider: {
+        width: 1,
+        height: 24,
+        backgroundColor: theme.colors.border
     },
     statLabel: {
         fontSize: 11,
@@ -293,18 +375,34 @@ const styles = StyleSheet.create({
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        padding: 32
+        padding: 32,
+        gap: 6
     },
     emptyTitle: {
         fontSize: 16,
         fontWeight: '700',
-        color: theme.colors.text
+        color: theme.colors.text,
+        marginTop: 6
     },
     emptySubtitle: {
         fontSize: 13,
         color: theme.colors.textMuted,
-        textAlign: 'center',
-        marginTop: 6
+        textAlign: 'center'
+    },
+    emptyAddBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        backgroundColor: theme.colors.primary,
+        paddingVertical: 10,
+        paddingHorizontal: 18,
+        borderRadius: theme.radii.md,
+        marginTop: 12
+    },
+    emptyAddBtnText: {
+        color: '#FFFFFF',
+        fontSize: 13,
+        fontWeight: '700'
     },
     listContent: {
         paddingHorizontal: 16,
@@ -336,13 +434,10 @@ const styles = StyleSheet.create({
     },
     badgeIncome: { backgroundColor: theme.colors.emeraldLight },
     badgeExpense: { backgroundColor: theme.colors.roseLight },
-    badgeTextIncome: { color: theme.colors.emerald, fontSize: 16, fontWeight: '800' },
-    badgeTextExpense: { color: theme.colors.rose, fontSize: 16, fontWeight: '800' },
     trxInfo: { flex: 1 },
     trxTitle: { fontSize: 14, fontWeight: '600', color: theme.colors.text },
     trxMeta: { fontSize: 11, color: theme.colors.textMuted, marginTop: 2 },
     trxRight: { alignItems: 'flex-end', gap: 4 },
     amountText: { fontSize: 14, fontWeight: '700' },
-    deleteBtn: { padding: 4 },
-    deleteBtnText: { fontSize: 14, color: theme.colors.textSubtle }
+    deleteBtn: { padding: 4 }
 });

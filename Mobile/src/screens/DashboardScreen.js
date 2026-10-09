@@ -6,8 +6,10 @@ import {
     TouchableOpacity,
     RefreshControl,
     StyleSheet,
-    ActivityIndicator
+    ActivityIndicator,
+    Alert
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { formatCurrency, getCurrencySymbol, getPaymentMethodLabel } from '../utils/currencies';
 import { theme } from '../theme';
 import { mobileApi } from '../services/api';
@@ -21,7 +23,8 @@ export const DashboardScreen = ({
     user,
     onOpenTransactionModal,
     onOpenCurrencyModal,
-    navigation
+    refreshSignal = 0,
+    onTransactionChanged
 }) => {
     const currency = user?.currency || 'USD';
     const now = new Date();
@@ -32,10 +35,10 @@ export const DashboardScreen = ({
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
 
-    const loadSummary = useCallback(async () => {
+    const loadSummary = useCallback(async (force = false) => {
         try {
-            setLoading(true);
-            const data = await mobileApi.getMonthlySummary(selectedMonth);
+            if (!summary) setLoading(true);
+            const data = await mobileApi.getMonthlySummary(selectedMonth, force);
             setSummary(data);
         } catch (err) {
             console.error('Failed to load summary:', err.message);
@@ -43,21 +46,22 @@ export const DashboardScreen = ({
             setLoading(false);
             setRefreshing(false);
         }
-    }, [selectedMonth]);
+    }, [selectedMonth, summary]);
 
     useEffect(() => {
-        loadSummary();
-    }, [loadSummary]);
+        loadSummary(true);
+    }, [selectedMonth, refreshSignal]);
 
     const onRefresh = () => {
         setRefreshing(true);
-        loadSummary();
+        loadSummary(true);
     };
 
     const [yearStr, monthStr] = selectedMonth.split('-');
     const currentYear = parseInt(yearStr, 10);
     const currentMonthIndex = parseInt(monthStr, 10) - 1;
     const monthLabel = `${MONTH_NAMES[currentMonthIndex]} ${currentYear}`;
+    const isCurrentMonth = selectedMonth === currentM;
 
     const handlePrevMonth = () => {
         let prevM = currentMonthIndex - 1;
@@ -77,6 +81,31 @@ export const DashboardScreen = ({
             nextY += 1;
         }
         setSelectedMonth(`${nextY}-${String(nextM + 1).padStart(2, '0')}`);
+    };
+
+    const handleDeleteRecent = (trx) => {
+        Alert.alert(
+            'Eliminar movimiento',
+            `Deseas eliminar "${trx.description || (trx.type === 'income' ? 'Ingreso' : 'Gasto')}" de ${formatCurrency(trx.amount, currency)}?`,
+            [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                    text: 'Eliminar',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            await mobileApi.deleteTransaction(trx.id);
+                            loadSummary(true);
+                            if (onTransactionChanged) {
+                                onTransactionChanged();
+                            }
+                        } catch (err) {
+                            Alert.alert('Error', err.message || 'No se pudo eliminar el movimiento');
+                        }
+                    }
+                }
+            ]
+        );
     };
 
     const totalIncome = summary?.totalIncome || 0;
@@ -99,18 +128,29 @@ export const DashboardScreen = ({
                 </View>
                 <TouchableOpacity style={styles.currencyBadge} onPress={onOpenCurrencyModal}>
                     <Text style={styles.currencyBadgeText}>
-                        {currency} ({getCurrencySymbol(currency)}) ▾
+                        {currency} ({getCurrencySymbol(currency)})
                     </Text>
+                    <Ionicons name="chevron-down" size={13} color={theme.colors.primary} />
                 </TouchableOpacity>
             </View>
 
             <View style={styles.monthSelector}>
-                <TouchableOpacity onPress={handlePrevMonth} style={styles.navArrowBtn}>
-                    <Text style={styles.navArrowText}>‹</Text>
+                <TouchableOpacity onPress={handlePrevMonth} style={styles.navArrowBtn} accessibilityLabel="Mes anterior">
+                    <Ionicons name="chevron-back" size={18} color={theme.colors.textMuted} />
                 </TouchableOpacity>
-                <Text style={styles.monthLabelText}>{monthLabel}</Text>
-                <TouchableOpacity onPress={handleNextMonth} style={styles.navArrowBtn}>
-                    <Text style={styles.navArrowText}>›</Text>
+                <View style={styles.monthCenterWrap}>
+                    <Text style={styles.monthLabelText}>{monthLabel}</Text>
+                    {!isCurrentMonth && (
+                        <TouchableOpacity
+                            style={styles.todayShortcut}
+                            onPress={() => setSelectedMonth(currentM)}
+                        >
+                            <Text style={styles.todayShortcutText}>Volver al mes actual</Text>
+                        </TouchableOpacity>
+                    )}
+                </View>
+                <TouchableOpacity onPress={handleNextMonth} style={styles.navArrowBtn} accessibilityLabel="Mes siguiente">
+                    <Ionicons name="chevron-forward" size={18} color={theme.colors.textMuted} />
                 </TouchableOpacity>
             </View>
 
@@ -119,7 +159,7 @@ export const DashboardScreen = ({
                     style={[styles.actionBtn, styles.incomeActionBtn]}
                     onPress={() => onOpenTransactionModal('income')}
                 >
-                    <Text style={styles.actionBtnPlus}>+</Text>
+                    <Ionicons name="arrow-down-circle" size={20} color="#FFFFFF" />
                     <Text style={styles.actionBtnText}>Ingreso</Text>
                 </TouchableOpacity>
 
@@ -127,12 +167,12 @@ export const DashboardScreen = ({
                     style={[styles.actionBtn, styles.expenseActionBtn]}
                     onPress={() => onOpenTransactionModal('expense')}
                 >
-                    <Text style={styles.actionBtnMinus}>−</Text>
+                    <Ionicons name="arrow-up-circle" size={20} color="#FFFFFF" />
                     <Text style={styles.actionBtnText}>Gasto</Text>
                 </TouchableOpacity>
             </View>
 
-            {loading && !refreshing ? (
+            {loading && !summary ? (
                 <View style={styles.loaderWrap}>
                     <ActivityIndicator size="large" color={theme.colors.primary} />
                 </View>
@@ -140,36 +180,56 @@ export const DashboardScreen = ({
                 <>
                     <View style={styles.metricsContainer}>
                         <View style={[styles.metricCard, styles.incomeCard]}>
-                            <Text style={styles.metricLabel}>Ingresos del mes</Text>
+                            <View style={styles.metricHeaderRow}>
+                                <Text style={styles.metricLabel}>Ingresos del mes</Text>
+                                <View style={styles.metricIconWrapIncome}>
+                                    <Ionicons name="trending-up-outline" size={16} color={theme.colors.emerald} />
+                                </View>
+                            </View>
                             <Text style={[styles.metricValue, styles.textEmerald]}>
                                 {formatCurrency(totalIncome, currency)}
                             </Text>
                         </View>
 
                         <View style={[styles.metricCard, styles.expenseCard]}>
-                            <Text style={styles.metricLabel}>Gastos del mes</Text>
+                            <View style={styles.metricHeaderRow}>
+                                <Text style={styles.metricLabel}>Gastos del mes</Text>
+                                <View style={styles.metricIconWrapExpense}>
+                                    <Ionicons name="trending-down-outline" size={16} color={theme.colors.rose} />
+                                </View>
+                            </View>
                             <Text style={[styles.metricValue, styles.textRose]}>
                                 {formatCurrency(totalExpense, currency)}
                             </Text>
                         </View>
 
                         <View style={[styles.metricCard, styles.balanceCard]}>
-                            <Text style={styles.metricLabel}>Balance neto</Text>
+                            <View style={styles.metricHeaderRow}>
+                                <Text style={styles.metricLabel}>Balance neto</Text>
+                                <View style={styles.metricIconWrapBalance}>
+                                    <Ionicons name="wallet-outline" size={16} color={theme.colors.primary} />
+                                </View>
+                            </View>
                             <Text style={[styles.metricValue, balance >= 0 ? styles.textIndigo : styles.textRose]}>
                                 {formatCurrency(balance, currency)}
                             </Text>
-                            <Text style={styles.metricSub}>
-                                {balance >= 0 ? 'Superávit en el periodo' : 'Déficit en el periodo'}
-                            </Text>
+                            <View style={styles.balanceStatusRow}>
+                                <View style={[styles.statusDot, balance >= 0 ? styles.statusDotPositive : styles.statusDotNegative]} />
+                                <Text style={styles.metricSub}>
+                                    {balance >= 0 ? 'Superavit en el periodo' : 'Deficit en el periodo'}
+                                </Text>
+                            </View>
                         </View>
                     </View>
 
                     <View style={styles.sectionHeader}>
-                        <Text style={styles.sectionTitle}>Últimos Movimientos</Text>
+                        <Text style={styles.sectionTitle}>Ultimos Movimientos</Text>
+                        <Text style={styles.sectionHint}>Toca para opciones</Text>
                     </View>
 
                     {recentTransactions.length === 0 ? (
                         <View style={styles.emptyCard}>
+                            <Ionicons name="receipt-outline" size={32} color={theme.colors.textSubtle} />
                             <Text style={styles.emptyTitle}>Sin movimientos este mes</Text>
                             <Text style={styles.emptySub}>
                                 Registra un ingreso o gasto con los botones superiores
@@ -179,26 +239,36 @@ export const DashboardScreen = ({
                         recentTransactions.map((trx) => {
                             const isIncome = trx.type === 'income';
                             return (
-                                <View key={trx.id} style={styles.trxItem}>
+                                <TouchableOpacity
+                                    key={trx.id}
+                                    style={styles.trxItem}
+                                    onPress={() => handleDeleteRecent(trx)}
+                                    activeOpacity={0.7}
+                                >
                                     <View style={styles.trxLeft}>
                                         <View style={[styles.trxBadge, isIncome ? styles.badgeIncome : styles.badgeExpense]}>
-                                            <Text style={isIncome ? styles.badgeTextIncome : styles.badgeTextExpense}>
-                                                {isIncome ? '↗' : '↘'}
-                                            </Text>
+                                            <Ionicons
+                                                name={isIncome ? 'arrow-down' : 'arrow-up'}
+                                                size={15}
+                                                color={isIncome ? theme.colors.emerald : theme.colors.rose}
+                                            />
                                         </View>
-                                        <View>
-                                            <Text style={styles.trxDescription}>
+                                        <View style={styles.trxTextWrap}>
+                                            <Text style={styles.trxDescription} numberOfLines={1}>
                                                 {trx.description || (isIncome ? 'Ingreso' : 'Gasto')}
                                             </Text>
-                                            <Text style={styles.trxSub}>
+                                            <Text style={styles.trxSub} numberOfLines={1}>
                                                 {trx.categoryFinance?.name || 'General'} • {getPaymentMethodLabel(trx.paymentMethod, trx.type)} • {trx.date}
                                             </Text>
                                         </View>
                                     </View>
-                                    <Text style={[styles.trxAmount, isIncome ? styles.textEmerald : styles.textRose]}>
-                                        {isIncome ? '+' : '-'} {formatCurrency(trx.amount, currency)}
-                                    </Text>
-                                </View>
+                                    <View style={styles.trxRight}>
+                                        <Text style={[styles.trxAmount, isIncome ? styles.textEmerald : styles.textRose]}>
+                                            {isIncome ? '+' : '-'} {formatCurrency(trx.amount, currency)}
+                                        </Text>
+                                        <Ionicons name="chevron-forward" size={14} color={theme.colors.textSubtle} />
+                                    </View>
+                                </TouchableOpacity>
                             );
                         })
                     )}
@@ -206,7 +276,7 @@ export const DashboardScreen = ({
                     {expenseBreakdown.length > 0 && (
                         <>
                             <View style={[styles.sectionHeader, { marginTop: 24 }]}>
-                                <Text style={styles.sectionTitle}>Distribución de Gastos</Text>
+                                <Text style={styles.sectionTitle}>Distribucion de Gastos</Text>
                             </View>
                             <View style={styles.breakdownCard}>
                                 {expenseBreakdown.map((item) => {
@@ -264,6 +334,9 @@ const styles = StyleSheet.create({
         marginTop: 2
     },
     currencyBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
         backgroundColor: theme.colors.primaryLight,
         paddingHorizontal: 12,
         paddingVertical: 6,
@@ -282,24 +355,30 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         backgroundColor: theme.colors.card,
         borderRadius: theme.radii.md,
-        paddingHorizontal: 16,
+        paddingHorizontal: 14,
         paddingVertical: 10,
         borderWidth: 1,
         borderColor: theme.colors.border,
         marginBottom: 16
     },
+    monthCenterWrap: {
+        alignItems: 'center'
+    },
     navArrowBtn: {
         padding: 6
-    },
-    navArrowText: {
-        fontSize: 20,
-        fontWeight: '700',
-        color: theme.colors.textMuted
     },
     monthLabelText: {
         fontSize: 15,
         fontWeight: '700',
         color: theme.colors.text
+    },
+    todayShortcut: {
+        marginTop: 2
+    },
+    todayShortcutText: {
+        fontSize: 11,
+        color: theme.colors.primary,
+        fontWeight: '600'
     },
     actionButtonsRow: {
         flexDirection: 'row',
@@ -311,7 +390,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        paddingVertical: 14,
+        paddingVertical: 13,
         borderRadius: theme.radii.lg,
         elevation: 2,
         shadowColor: '#000',
@@ -325,19 +404,9 @@ const styles = StyleSheet.create({
     expenseActionBtn: {
         backgroundColor: theme.colors.rose
     },
-    actionBtnPlus: {
-        color: '#FFFFFF',
-        fontSize: 20,
-        fontWeight: '800'
-    },
-    actionBtnMinus: {
-        color: '#FFFFFF',
-        fontSize: 20,
-        fontWeight: '800'
-    },
     actionBtnText: {
         color: '#FFFFFF',
-        fontSize: 16,
+        fontSize: 15,
         fontWeight: '700'
     },
     loaderWrap: {
@@ -367,6 +436,35 @@ const styles = StyleSheet.create({
         borderLeftWidth: 5,
         borderLeftColor: theme.colors.primary
     },
+    metricHeaderRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center'
+    },
+    metricIconWrapIncome: {
+        width: 26,
+        height: 26,
+        borderRadius: 13,
+        backgroundColor: theme.colors.emeraldLight,
+        justifyContent: 'center',
+        alignItems: 'center'
+    },
+    metricIconWrapExpense: {
+        width: 26,
+        height: 26,
+        borderRadius: 13,
+        backgroundColor: theme.colors.roseLight,
+        justifyContent: 'center',
+        alignItems: 'center'
+    },
+    metricIconWrapBalance: {
+        width: 26,
+        height: 26,
+        borderRadius: 13,
+        backgroundColor: theme.colors.primaryLight,
+        justifyContent: 'center',
+        alignItems: 'center'
+    },
     metricLabel: {
         fontSize: 12,
         fontWeight: '600',
@@ -377,12 +475,29 @@ const styles = StyleSheet.create({
     metricValue: {
         fontSize: 24,
         fontWeight: '800',
-        marginTop: 4
+        marginTop: 6
+    },
+    balanceStatusRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        marginTop: 6
+    },
+    statusDot: {
+        width: 7,
+        height: 7,
+        borderRadius: 3.5
+    },
+    statusDotPositive: {
+        backgroundColor: theme.colors.emerald
+    },
+    statusDotNegative: {
+        backgroundColor: theme.colors.rose
     },
     metricSub: {
         fontSize: 11,
         color: theme.colors.textSubtle,
-        marginTop: 4
+        fontWeight: '500'
     },
     textEmerald: { color: theme.colors.emerald },
     textRose: { color: theme.colors.rose },
@@ -398,6 +513,10 @@ const styles = StyleSheet.create({
         fontWeight: '700',
         color: theme.colors.text
     },
+    sectionHint: {
+        fontSize: 11,
+        color: theme.colors.textSubtle
+    },
     emptyCard: {
         backgroundColor: theme.colors.card,
         borderRadius: theme.radii.md,
@@ -405,7 +524,8 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         borderWidth: 1,
         borderColor: theme.colors.border,
-        borderStyle: 'dashed'
+        borderStyle: 'dashed',
+        gap: 6
     },
     emptyTitle: {
         fontSize: 14,
@@ -415,7 +535,6 @@ const styles = StyleSheet.create({
     emptySub: {
         fontSize: 12,
         color: theme.colors.textMuted,
-        marginTop: 4,
         textAlign: 'center'
     },
     trxItem: {
@@ -448,15 +567,8 @@ const styles = StyleSheet.create({
     badgeExpense: {
         backgroundColor: theme.colors.roseLight
     },
-    badgeTextIncome: {
-        color: theme.colors.emerald,
-        fontSize: 16,
-        fontWeight: '800'
-    },
-    badgeTextExpense: {
-        color: theme.colors.rose,
-        fontSize: 16,
-        fontWeight: '800'
+    trxTextWrap: {
+        flex: 1
     },
     trxDescription: {
         fontSize: 14,
@@ -468,10 +580,14 @@ const styles = StyleSheet.create({
         color: theme.colors.textMuted,
         marginTop: 2
     },
+    trxRight: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6
+    },
     trxAmount: {
-        fontSize: 15,
-        fontWeight: '700',
-        marginLeft: 8
+        fontSize: 14,
+        fontWeight: '700'
     },
     breakdownCard: {
         backgroundColor: theme.colors.card,
