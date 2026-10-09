@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { updateProfileThunk } from '../store/authSlice';
 import { CURRENCIES, getCurrencySymbol } from '../utils/currencies';
-import { User, Mail, Coins, X, Check, Camera, Shield } from 'lucide-react';
+import { User, Mail, Coins, X, Check, Camera, Shield, Lock, Eye, EyeOff, ChevronDown, ChevronUp } from 'lucide-react';
 import Swal from 'sweetalert2';
 
 export const ProfileModal = ({ isOpen, onClose }) => {
@@ -15,6 +15,14 @@ export const ProfileModal = ({ isOpen, onClose }) => {
     const [profilephoto, setProfilephoto] = useState('');
     const [isSaving, setIsSaving] = useState(false);
 
+    const [showPasswordSection, setShowPasswordSection] = useState(false);
+    const [currentPassword, setCurrentPassword] = useState('');
+    const [newPassword, setNewPassword] = useState('');
+    const [confirmNewPassword, setConfirmNewPassword] = useState('');
+    const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+    const [showNewPassword, setShowNewPassword] = useState(false);
+    const [showConfirmNewPassword, setShowConfirmNewPassword] = useState(false);
+
     useEffect(() => {
         if (user) {
             setName(user.name || '');
@@ -22,6 +30,10 @@ export const ProfileModal = ({ isOpen, onClose }) => {
             setCurrency(user.currency || 'USD');
             setProfilephoto(user.profilephoto || '');
         }
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmNewPassword('');
+        setShowPasswordSection(false);
     }, [user, isOpen]);
 
     if (!isOpen) return null;
@@ -37,19 +49,55 @@ export const ProfileModal = ({ isOpen, onClose }) => {
             return;
         }
 
+        if (showPasswordSection || newPassword || currentPassword) {
+            if (!currentPassword) {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Contraseña actual requerida',
+                    text: 'Ingresa tu contraseña actual para confirmar el cambio'
+                });
+                return;
+            }
+            if (newPassword.length < 6) {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Contraseña demasiado corta',
+                    text: 'La nueva contraseña debe tener al menos 6 caracteres'
+                });
+                return;
+            }
+            if (newPassword !== confirmNewPassword) {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Las contraseñas no coinciden',
+                    text: 'Verifica que la nueva contraseña y su confirmación sean idénticas'
+                });
+                return;
+            }
+        }
+
         try {
             setIsSaving(true);
-            await dispatch(updateProfileThunk({
+            const payload = {
                 name: name.trim(),
                 lastName: lastName.trim(),
                 currency,
                 profilephoto: profilephoto.trim() || null
-            })).unwrap();
+            };
+
+            if (newPassword) {
+                payload.password = newPassword.trim();
+                payload.currentPassword = currentPassword;
+            }
+
+            await dispatch(updateProfileThunk(payload)).unwrap();
 
             Swal.fire({
                 icon: 'success',
                 title: 'Perfil actualizado',
-                text: 'Tus datos han sido guardados correctamente',
+                text: newPassword
+                    ? 'Tus datos y contraseña han sido actualizados correctamente'
+                    : 'Tus datos han sido guardados correctamente',
                 timer: 1600,
                 showConfirmButton: false
             });
@@ -185,6 +233,96 @@ export const ProfileModal = ({ isOpen, onClose }) => {
                             onChange={(e) => setProfilephoto(e.target.value)}
                             placeholder="https://ejemplo.com/mifoto.jpg"
                         />
+                    </div>
+
+                    <div className="form-group">
+                        <button
+                            type="button"
+                            className="password-accordion-btn"
+                            onClick={() => setShowPasswordSection(!showPasswordSection)}
+                        >
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <Lock size={15} />
+                                Cambiar Contraseña
+                            </span>
+                            {showPasswordSection ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                        </button>
+
+                        {showPasswordSection && (
+                            <div className="password-change-box">
+                                <div className="form-group">
+                                    <label className="form-label">
+                                        <Lock size={13} className="inline-icon" /> Contraseña Actual
+                                    </label>
+                                    <div className="password-input-wrap">
+                                        <input
+                                            type={showCurrentPassword ? 'text' : 'password'}
+                                            className="form-input"
+                                            value={currentPassword}
+                                            onChange={(e) => setCurrentPassword(e.target.value)}
+                                            placeholder="Tu contraseña actual"
+                                            autoComplete="current-password"
+                                        />
+                                        <button
+                                            type="button"
+                                            className="password-toggle-btn"
+                                            onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                                            aria-label="Alternar visibilidad"
+                                        >
+                                            {showCurrentPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="form-group">
+                                    <label className="form-label">
+                                        <Lock size={13} className="inline-icon" /> Nueva Contraseña
+                                    </label>
+                                    <div className="password-input-wrap">
+                                        <input
+                                            type={showNewPassword ? 'text' : 'password'}
+                                            className="form-input"
+                                            value={newPassword}
+                                            onChange={(e) => setNewPassword(e.target.value)}
+                                            placeholder="Mínimo 6 caracteres"
+                                            autoComplete="new-password"
+                                        />
+                                        <button
+                                            type="button"
+                                            className="password-toggle-btn"
+                                            onClick={() => setShowNewPassword(!showNewPassword)}
+                                            aria-label="Alternar visibilidad"
+                                        >
+                                            {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="form-group">
+                                    <label className="form-label">
+                                        <Lock size={13} className="inline-icon" /> Confirmar Nueva Contraseña
+                                    </label>
+                                    <div className="password-input-wrap">
+                                        <input
+                                            type={showConfirmNewPassword ? 'text' : 'password'}
+                                            className="form-input"
+                                            value={confirmNewPassword}
+                                            onChange={(e) => setConfirmNewPassword(e.target.value)}
+                                            placeholder="Repite la nueva contraseña"
+                                            autoComplete="new-password"
+                                        />
+                                        <button
+                                            type="button"
+                                            className="password-toggle-btn"
+                                            onClick={() => setShowConfirmNewPassword(!showConfirmNewPassword)}
+                                            aria-label="Alternar visibilidad"
+                                        >
+                                            {showConfirmNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     <div className="modal-footer">

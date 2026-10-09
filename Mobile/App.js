@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as SecureStore from 'expo-secure-store';
 import { theme } from './src/theme';
 import { mobileApi } from './src/services/api';
 import { DashboardScreen } from './src/screens/DashboardScreen';
@@ -72,6 +73,10 @@ function FinTrackMain() {
 
     const handleUpdateProfile = async (profileData) => {
         const res = await mobileApi.updateProfile(profileData);
+        if (res.token) {
+            mobileApi.setToken(res.token);
+            await SecureStore.setItemAsync('fintrack_auth_token', res.token);
+        }
         if (res.user) {
             setUser(res.user);
         }

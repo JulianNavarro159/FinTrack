@@ -128,21 +128,48 @@ const updateUserCurrency = async (id, currency) => {
 };
 
 /**
- * Updates profile attributes for a user.
+ * Updates profile attributes for a user, with optional password change.
  * 
  * @param {number} id - User ID.
  * @param {object} profileData - Fields to update.
  * @returns {Promise<object>} Updated user attributes.
  */
-const updateUserProfile = async (id, { name, lastName, currency, profilephoto }) => {
+const updateUserProfile = async (id, { name, lastName, currency, profilephoto, password, currentPassword }) => {
     const user = await User.findByPk(id);
     if (!user) {
-        throw new Error("User not found");
+        const error = new Error("User not found");
+        error.status = 404;
+        throw error;
     }
 
-    if (name !== undefined) user.name = name.trim();
-    if (lastName !== undefined) user.lastName = lastName.trim();
-    if (currency !== undefined) user.currency = currency.toUpperCase().trim();
+    if (password && password.trim().length > 0) {
+        if (password.trim().length < 6) {
+            const error = new Error("New password must be at least 6 characters long");
+            error.status = 400;
+            throw error;
+        }
+
+        if (user.password) {
+            if (!currentPassword) {
+                const error = new Error("Current password is required to change password");
+                error.status = 400;
+                throw error;
+            }
+            const isMatch = await comparePassword(currentPassword, user.password);
+            if (!isMatch) {
+                const error = new Error("Current password does not match");
+                error.status = 401;
+                throw error;
+            }
+        }
+
+        user.password = await hashPassword(password.trim());
+        user.tokenAuth = generateUserToken(user);
+    }
+
+    if (name !== undefined && name !== null) user.name = name.trim();
+    if (lastName !== undefined && lastName !== null) user.lastName = lastName.trim();
+    if (currency !== undefined && currency !== null) user.currency = currency.toUpperCase().trim();
     if (profilephoto !== undefined) user.profilephoto = profilephoto;
 
     await user.save();
@@ -153,7 +180,8 @@ const updateUserProfile = async (id, { name, lastName, currency, profilephoto })
         lastName: user.lastName,
         email: user.email,
         currency: user.currency,
-        profilephoto: user.profilephoto
+        profilephoto: user.profilephoto,
+        token: user.tokenAuth
     };
 };
 

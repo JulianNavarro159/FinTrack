@@ -113,22 +113,26 @@ const getMyProfile = async (req, res) => {
 const updateProfile = async (req, res) => {
     try {
         const idUser = req.idUser;
-        const { name, lastName, currency } = req.body;
+        const { name, lastName, currency, password, currentPassword } = req.body;
         const profilephoto = req.file ? req.file.path : (req.body.profilephoto || undefined);
 
         const updated = await updateUserProfileService(idUser, {
             name,
             lastName,
             currency,
-            profilephoto
+            profilephoto,
+            password,
+            currentPassword
         });
 
         return res.status(200).json({
             message: "Profile updated successfully",
-            user: updated
+            user: updated,
+            token: updated.token
         });
     } catch (error) {
-        return res.status(500).json({ message: "Error updating profile", error: error.message });
+        const statusCode = error.status || 500;
+        return res.status(statusCode).json({ message: error.message || "Error updating profile" });
     }
 };
 

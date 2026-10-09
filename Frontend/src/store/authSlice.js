@@ -55,7 +55,10 @@ export const updateProfileThunk = createAsyncThunk(
     async (profileData, { rejectWithValue }) => {
         try {
             const data = await api.updateProfile(profileData);
-            return data.user;
+            if (data.token) {
+                api.setToken(data.token);
+            }
+            return data;
         } catch (error) {
             return rejectWithValue(error.message);
         }
@@ -131,7 +134,12 @@ export const authSlice = createSlice({
                 }
             })
             .addCase(updateProfileThunk.fulfilled, (state, action) => {
-                state.user = { ...state.user, ...action.payload };
+                if (action.payload?.user) {
+                    state.user = { ...state.user, ...action.payload.user };
+                }
+                if (action.payload?.token) {
+                    state.token = action.payload.token;
+                }
             });
     }
 });
