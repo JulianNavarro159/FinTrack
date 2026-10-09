@@ -22,8 +22,12 @@ if (DB_SSL === "true" || (DATABASE_URL && !DATABASE_URL.includes("localhost"))) 
   };
 }
 
-const sequelize = DATABASE_URL
-  ? new Sequelize(DATABASE_URL, {
+const sanitizedDatabaseUrl = DATABASE_URL
+  ? DATABASE_URL.replace(/[?&]ssl-mode=[^&]*/, '')
+  : null;
+
+const sequelize = sanitizedDatabaseUrl
+  ? new Sequelize(sanitizedDatabaseUrl, {
       dialect: "mysql",
       logging: false,
       dialectOptions,
