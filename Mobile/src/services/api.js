@@ -84,7 +84,7 @@ export const mobileApi = {
         }
 
         const controller = new AbortController();
-        const timeoutMs = options.timeoutMs || 10000;
+        const timeoutMs = options.timeoutMs || 45000;
         const timeoutTimer = setTimeout(() => controller.abort(), timeoutMs);
 
         const config = {
