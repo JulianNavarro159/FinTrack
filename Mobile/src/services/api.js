@@ -59,17 +59,35 @@ export const mobileApi = {
         cachedCategories = null;
     },
 
+    wakeUpServer() {
+        try {
+            fetch(`${currentBaseUrl}/ping`, { method: 'GET' }).catch(() => {});
+        } catch {
+            // ignore non-blocking error
+        }
+    },
+
     async pingServer() {
         try {
             const controller = new AbortController();
-            const timer = setTimeout(() => controller.abort(), 4000);
-            const res = await fetch(`${currentBaseUrl}/categories`, {
+            const timer = setTimeout(() => controller.abort(), 6000);
+            const res = await fetch(`${currentBaseUrl}/ping`, {
                 signal: controller.signal
             });
             clearTimeout(timer);
             return res.ok;
         } catch {
-            return false;
+            try {
+                const fallbackController = new AbortController();
+                const fallbackTimer = setTimeout(() => fallbackController.abort(), 6000);
+                const res = await fetch(`${currentBaseUrl}/categories`, {
+                    signal: fallbackController.signal
+                });
+                clearTimeout(fallbackTimer);
+                return res.ok;
+            } catch {
+                return false;
+            }
         }
     },
 

@@ -21,6 +21,7 @@ import { mobileApi } from '../services/api';
 
 const AUTH_TOKEN_KEY = 'fintrack_auth_token';
 const AUTH_EMAIL_KEY = 'fintrack_auth_email';
+const AUTH_PROFILE_KEY = 'fintrack_user_profile';
 
 export const AuthScreen = ({ onAuthSuccess }) => {
     const [isRegister, setIsRegister] = useState(false);
@@ -44,6 +45,7 @@ export const AuthScreen = ({ onAuthSuccess }) => {
 
     useEffect(() => {
         checkBiometricsAvailability();
+        mobileApi.wakeUpServer();
     }, []);
 
     const checkBiometricsAvailability = async () => {
@@ -96,13 +98,36 @@ export const AuthScreen = ({ onAuthSuccess }) => {
                 }
 
                 mobileApi.setToken(token);
+
+                const rawProfile = await SecureStore.getItemAsync(AUTH_PROFILE_KEY);
+                if (rawProfile) {
+                    try {
+                        const parsedProfile = JSON.parse(rawProfile);
+                        onAuthSuccess(parsedProfile);
+                        mobileApi.getProfile().then((freshProfile) => {
+                            if (freshProfile) {
+                                SecureStore.setItemAsync(AUTH_PROFILE_KEY, JSON.stringify(freshProfile)).catch(() => {});
+                            }
+                        }).catch(() => {});
+                        return;
+                    } catch {
+                        // ignore and fetch from API
+                    }
+                }
+
                 try {
                     const profile = await mobileApi.getProfile();
+                    await SecureStore.setItemAsync(AUTH_PROFILE_KEY, JSON.stringify(profile));
                     onAuthSuccess(profile);
-                } catch {
-                    await SecureStore.deleteItemAsync(AUTH_TOKEN_KEY);
-                    setHasStoredToken(false);
-                    Alert.alert('Sesion Expirada', 'Por favor ingresa tu correo y contrasena para renovar tu sesion.');
+                } catch (profileError) {
+                    if (profileError.message && (profileError.message.includes('401') || profileError.message.includes('Token'))) {
+                        await SecureStore.deleteItemAsync(AUTH_TOKEN_KEY);
+                        await SecureStore.deleteItemAsync(AUTH_PROFILE_KEY);
+                        setHasStoredToken(false);
+                        Alert.alert('Sesion Expirada', 'Por favor ingresa tu correo y contrasena para renovar tu sesion.');
+                    } else {
+                        Alert.alert('Error de Conexion', 'El servidor esta tardando en responder. Intenta de nuevo en unos segundos.');
+                    }
                 }
             }
         } catch {
@@ -179,8 +204,10 @@ export const AuthScreen = ({ onAuthSuccess }) => {
                 mobileApi.setToken(res.token);
                 await SecureStore.setItemAsync(AUTH_TOKEN_KEY, res.token);
                 await SecureStore.setItemAsync(AUTH_EMAIL_KEY, email.trim().toLowerCase());
+                const profileToStore = res.user || { email: email.trim().toLowerCase(), currency };
+                await SecureStore.setItemAsync(AUTH_PROFILE_KEY, JSON.stringify(profileToStore));
                 setHasStoredToken(true);
-                onAuthSuccess(res.user || { email, currency });
+                onAuthSuccess(profileToStore);
             } else {
                 throw new Error('No se recibio token de autenticacion');
             }

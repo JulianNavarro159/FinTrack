@@ -115,7 +115,7 @@ const directLoginService = async (email, password = null) => {
 
     const token = generateUserToken(user);
     user.tokenAuth = token;
-    await user.save();
+    user.save().catch((err) => console.error("Error updating user tokenAuth:", err.message));
 
     return {
         user: {

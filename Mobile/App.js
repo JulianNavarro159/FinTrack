@@ -6,7 +6,8 @@ import {
     StyleSheet,
     StatusBar,
     Alert,
-    Platform
+    Platform,
+    ActivityIndicator
 } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -28,6 +29,7 @@ function FinTrackMain() {
 
     const [user, setUser] = useState(null);
     const [isAuthenticated, setIsAuthenticated] = useState(false);
+    const [initialLoading, setInitialLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('dashboard');
     const [categories, setCategories] = useState([]);
 
@@ -42,6 +44,33 @@ function FinTrackMain() {
     };
 
     useEffect(() => {
+        const restoreSavedSession = async () => {
+            try {
+                const token = await SecureStore.getItemAsync('fintrack_auth_token');
+                const rawProfile = await SecureStore.getItemAsync('fintrack_user_profile');
+                if (token && rawProfile) {
+                    const parsedProfile = JSON.parse(rawProfile);
+                    mobileApi.setToken(token);
+                    setUser(parsedProfile);
+                    setIsAuthenticated(true);
+                    mobileApi.getProfile().then((freshProfile) => {
+                        if (freshProfile) {
+                            setUser(freshProfile);
+                            SecureStore.setItemAsync('fintrack_user_profile', JSON.stringify(freshProfile)).catch(() => {});
+                        }
+                    }).catch(() => {});
+                }
+            } catch (err) {
+                console.error('Session restore error:', err.message);
+            } finally {
+                setInitialLoading(false);
+            }
+        };
+
+        restoreSavedSession();
+    }, []);
+
+    useEffect(() => {
         if (isAuthenticated) {
             mobileApi.getCategories()
                 .then((cats) => setCategories(cats || []))
@@ -49,13 +78,18 @@ function FinTrackMain() {
         }
     }, [isAuthenticated]);
 
-    const handleAuthSuccess = (userData) => {
+    const handleAuthSuccess = async (userData) => {
         setUser(userData);
         setIsAuthenticated(true);
+        if (userData) {
+            await SecureStore.setItemAsync('fintrack_user_profile', JSON.stringify(userData)).catch(() => {});
+        }
     };
 
-    const handleLogout = () => {
+    const handleLogout = async () => {
         mobileApi.setToken(null);
+        await SecureStore.deleteItemAsync('fintrack_auth_token').catch(() => {});
+        await SecureStore.deleteItemAsync('fintrack_user_profile').catch(() => {});
         setUser(null);
         setIsAuthenticated(false);
     };
@@ -85,8 +119,18 @@ function FinTrackMain() {
         }
         if (res.user) {
             setUser(res.user);
+            await SecureStore.setItemAsync('fintrack_user_profile', JSON.stringify(res.user)).catch(() => {});
         }
     };
+
+    if (initialLoading) {
+        return (
+            <View style={[styles.safeAreaAuth, { paddingTop: topInset, paddingBottom: insets.bottom, justifyContent: 'center', alignItems: 'center' }]}>
+                <StatusBar barStyle="dark-content" backgroundColor={theme.colors.bg} translucent />
+                <ActivityIndicator size="large" color={theme.colors.primary} />
+            </View>
+        );
+    }
 
     if (!isAuthenticated) {
         return (

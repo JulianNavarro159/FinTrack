@@ -26,11 +26,19 @@ const sanitizedDatabaseUrl = DATABASE_URL
   ? DATABASE_URL.replace(/[?&]ssl-mode=[^&]*/, '')
   : null;
 
+const poolConfig = {
+  max: 10,
+  min: 0,
+  acquire: 30000,
+  idle: 10000
+};
+
 const sequelize = sanitizedDatabaseUrl
   ? new Sequelize(sanitizedDatabaseUrl, {
       dialect: "mysql",
       logging: false,
       dialectOptions,
+      pool: poolConfig,
       define: {
         timestamps: true,
         underscored: false
@@ -46,6 +54,7 @@ const sequelize = sanitizedDatabaseUrl
         dialect: "mysql",
         logging: false,
         dialectOptions,
+        pool: poolConfig,
         define: {
           timestamps: true,
           underscored: false
@@ -139,17 +148,6 @@ PaymentMethod.hasMany(PaymentAccount, {
 PaymentAccount.belongsTo(PaymentMethod, {
   foreignKey: "idPaymentMethod"
 });
-
-const testConnection = async () => {
-  try {
-    await sequelize.authenticate();
-    console.log("Conectado correctamente a MySQL");
-  } catch (error) {
-    console.error("Error conectando a la DB:", error.message);
-  }
-};
-
-testConnection();
 
 module.exports = {
   ...sequelize.models,

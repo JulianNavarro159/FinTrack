@@ -13,19 +13,21 @@ const authMiddleware = async (req, res, next) => {
             return res.status(401).json({ message: "Token inválido o no presente" });
         }
 
-        // Verificar el token con la clave secreta
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || "fintrack_jwt_secret_key");
         if (!decoded || !decoded.email) {
-            return res.status(401).json({ message: "Token no válido" });
+            return res.status(401).json({ message: "Token no valido" });
         }
 
-        // Buscar el usuario en la base de datos
+        if (decoded.id) {
+            req.idUser = decoded.id;
+            return next();
+        }
+
         const user = await User.findOne({ where: { email: decoded.email } });
         if (!user) {
             return res.status(404).json({ message: "Usuario no encontrado" });
         }
 
-        // Agregar el id del usuario al request
         req.idUser = user.id;
         next();
     } catch (error) {

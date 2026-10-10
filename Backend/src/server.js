@@ -17,6 +17,15 @@ server.use((req, res, next) => {
   next();
 });
 
+server.get(['/', '/health', '/ping'], (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    service: 'fintrack-backend',
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString()
+  });
+});
+
 server.use(router);
 server.use(auth_router);
 
