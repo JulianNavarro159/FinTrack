@@ -1,5 +1,5 @@
 import Constants from 'expo-constants';
-import { Platform } from 'react-native';
+import * as localDb from './localMobileDb';
 
 const PRODUCTION_API_URL = 'https://fintrack-backend-pza5.onrender.com';
 const FALLBACK_HOST_IP = '192.168.20.7';
@@ -63,14 +63,14 @@ export const mobileApi = {
         try {
             fetch(`${currentBaseUrl}/ping`, { method: 'GET' }).catch(() => {});
         } catch {
-            // ignore non-blocking error
+            // Non-blocking prewarm
         }
     },
 
     async pingServer() {
         try {
             const controller = new AbortController();
-            const timer = setTimeout(() => controller.abort(), 6000);
+            const timer = setTimeout(() => controller.abort(), 5000);
             const res = await fetch(`${currentBaseUrl}/ping`, {
                 signal: controller.signal
             });
@@ -79,7 +79,7 @@ export const mobileApi = {
         } catch {
             try {
                 const fallbackController = new AbortController();
-                const fallbackTimer = setTimeout(() => fallbackController.abort(), 6000);
+                const fallbackTimer = setTimeout(() => fallbackController.abort(), 5000);
                 const res = await fetch(`${currentBaseUrl}/categories`, {
                     signal: fallbackController.signal
                 });
@@ -102,7 +102,7 @@ export const mobileApi = {
         }
 
         const controller = new AbortController();
-        const timeoutMs = options.timeoutMs || 45000;
+        const timeoutMs = options.timeoutMs || 6000;
         const timeoutTimer = setTimeout(() => controller.abort(), timeoutMs);
 
         const config = {
@@ -118,63 +118,127 @@ export const mobileApi = {
         try {
             response = await fetch(url, config);
         } catch (networkError) {
-            if (networkError.name === 'AbortError') {
-                throw new Error('Tiempo de espera agotado. Verifica tu conexion a internet.');
-            }
-            throw new Error(`No se pudo conectar al servidor en ${currentBaseUrl}.`);
+            const err = new Error(`No se pudo conectar al servidor en ${currentBaseUrl}.`);
+            err.isNetworkError = true;
+            throw err;
         } finally {
             clearTimeout(timeoutTimer);
         }
 
         const data = await response.json().catch(() => ({}));
         if (!response.ok) {
-            throw new Error(data.message || `HTTP ${response.status}`);
+            const err = new Error(data.message || `HTTP ${response.status}`);
+            err.status = response.status;
+            throw err;
         }
         return data;
     },
 
-    login(email, password = null) {
+    async login(email, password = null) {
         this.clearCache();
-        return this.request('/users/login', {
-            method: 'POST',
-            body: { email, password }
-        });
+        try {
+            const data = await this.request('/users/login', {
+                method: 'POST',
+                body: { email, password }
+            });
+            if (data?.user) {
+                await localDb.updateLocalUser(data.user);
+            }
+            return data;
+        } catch (err) {
+            if (!err.isNetworkError && err.status && err.status < 500) {
+                throw err;
+            }
+            const user = await localDb.updateLocalUser({ email });
+            return {
+                token: `local_mobile_token_${Date.now()}`,
+                user
+            };
+        }
     },
 
-    register(userData) {
+    async register(userData) {
         this.clearCache();
-        return this.request('/users/register', {
-            method: 'POST',
-            body: userData
-        });
+        try {
+            const data = await this.request('/users/register', {
+                method: 'POST',
+                body: userData
+            });
+            if (data?.user) {
+                await localDb.updateLocalUser(data.user);
+            }
+            return data;
+        } catch (err) {
+            if (!err.isNetworkError && err.status && err.status < 500) {
+                throw err;
+            }
+            const user = await localDb.updateLocalUser({
+                name: userData.name,
+                email: userData.email,
+                currency: userData.currency || 'COP'
+            });
+            return {
+                token: `local_mobile_token_${Date.now()}`,
+                user
+            };
+        }
     },
 
-    getProfile() {
-        return this.request('/users/me');
+    async getProfile() {
+        try {
+            const profile = await this.request('/users/me');
+            await localDb.updateLocalUser(profile);
+            return profile;
+        } catch {
+            return await localDb.getLocalUser();
+        }
     },
 
-    updateProfile(data) {
-        return this.request('/users/profile', {
-            method: 'PUT',
-            body: data
-        });
+    async updateProfile(data) {
+        const localUser = await localDb.updateLocalUser(data);
+        try {
+            return await this.request('/users/profile', {
+                method: 'PUT',
+                body: data
+            });
+        } catch (err) {
+            if (!err.isNetworkError && err.status && err.status < 500) {
+                throw err;
+            }
+            return {
+                message: 'Profile updated in device storage',
+                user: localUser,
+                token: currentToken || `local_mobile_token_${Date.now()}`
+            };
+        }
     },
 
-    updateCurrency(currency) {
+    async updateCurrency(currency) {
         summaryCache.clear();
-        return this.request('/users/currency', {
-            method: 'PATCH',
-            body: { currency }
-        });
+        await localDb.updateLocalUser({ currency });
+        try {
+            return await this.request('/users/currency', {
+                method: 'PATCH',
+                body: { currency }
+            });
+        } catch {
+            return { message: 'Currency updated in device storage', currency };
+        }
     },
 
     async getCategories(forceRefresh = false) {
         if (!forceRefresh && cachedCategories && cachedCategories.length > 0) {
             return cachedCategories;
         }
-        const data = await this.request('/categories');
-        cachedCategories = data;
-        return data;
+        try {
+            const data = await this.request('/categories');
+            cachedCategories = data;
+            return data;
+        } catch {
+            const localCats = await localDb.getLocalCategories();
+            cachedCategories = localCats;
+            return localCats;
+        }
     },
 
     async getMonthlySummary(month, forceRefresh = false) {
@@ -186,35 +250,58 @@ export const mobileApi = {
             return cached.data;
         }
 
-        const query = month ? `?month=${month}` : '';
-        const data = await this.request(`/transaction/summary${query}`);
-        summaryCache.set(cacheKey, { timestamp: now, data });
-        return data;
+        try {
+            const query = month ? `?month=${month}` : '';
+            const data = await this.request(`/transaction/summary${query}`);
+            summaryCache.set(cacheKey, { timestamp: now, data });
+            return data;
+        } catch {
+            const localSummary = await localDb.getLocalMonthlySummary(month);
+            summaryCache.set(cacheKey, { timestamp: now, data: localSummary });
+            return localSummary;
+        }
     },
 
-    getTransactions(filters = {}) {
-        const params = new URLSearchParams();
-        Object.entries(filters).forEach(([key, val]) => {
-            if (val !== undefined && val !== null && val !== '') {
-                params.append(key, val);
-            }
-        });
-        const query = params.toString() ? `?${params.toString()}` : '';
-        return this.request(`/transaction${query}`);
+    async getTransactions(filters = {}) {
+        try {
+            const params = new URLSearchParams();
+            Object.entries(filters).forEach(([key, val]) => {
+                if (val !== undefined && val !== null && val !== '') {
+                    params.append(key, val);
+                }
+            });
+            const query = params.toString() ? `?${params.toString()}` : '';
+            return await this.request(`/transaction${query}`);
+        } catch {
+            return await localDb.getLocalTransactions(filters);
+        }
     },
 
     async createTransaction(data) {
         summaryCache.clear();
-        return await this.request('/transaction', {
-            method: 'POST',
-            body: data
-        });
+        const localCreated = await localDb.createLocalTransaction(data);
+        try {
+            return await this.request('/transaction', {
+                method: 'POST',
+                body: data
+            });
+        } catch {
+            return {
+                message: 'Transaction saved in device storage',
+                transaction: localCreated
+            };
+        }
     },
 
     async deleteTransaction(id) {
         summaryCache.clear();
-        return await this.request(`/transaction/${id}`, {
-            method: 'DELETE'
-        });
+        await localDb.deleteLocalTransaction(id);
+        try {
+            return await this.request(`/transaction/${id}`, {
+                method: 'DELETE'
+            });
+        } catch {
+            return { message: 'Transaction removed from device storage' };
+        }
     }
 };
