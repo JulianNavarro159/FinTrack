@@ -222,6 +222,36 @@ export const AuthPage = () => {
                             'Entrar a FinTrack'
                         )}
                     </button>
+
+                    {!isRegister && (
+                        <button
+                            type="button"
+                            className="btn-auth-demo"
+                            onClick={() => {
+                                setEmail('demo@fintrack.com');
+                                setPassword('password123');
+                                dispatch(loginUserThunk({
+                                    email: 'demo@fintrack.com',
+                                    password: 'password123'
+                                }));
+                            }}
+                            disabled={isLoading}
+                            style={{
+                                marginTop: '0.75rem',
+                                width: '100%',
+                                padding: '0.65rem 1rem',
+                                borderRadius: 'var(--radius-sm)',
+                                border: '1px dashed var(--border-color)',
+                                backgroundColor: 'var(--bg-app)',
+                                color: 'var(--text-main)',
+                                fontSize: '0.875rem',
+                                fontWeight: '600',
+                                cursor: 'pointer'
+                            }}
+                        >
+                            ⚡ Probar con Cuenta Demo (1-clic)
+                        </button>
+                    )}
                 </form>
 
                 {auth0?.loginWithRedirect && (

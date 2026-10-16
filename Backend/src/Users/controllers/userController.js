@@ -16,8 +16,9 @@ const {
  */
 const userRegister = async (req, res) => {
     try {
-        const { name, lastName, email, password, currency, emailVerified, isAdmin } = req.body;
-        const profilephoto = req.file ? req.file.path : (req.body.profilephoto || null);
+        const profilephoto = req.file
+            ? (req.file.path || `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`)
+            : (req.body.profilephoto || null);
 
         if (!email) {
             return res.status(400).json({ message: "Email is required" });
@@ -114,7 +115,9 @@ const updateProfile = async (req, res) => {
     try {
         const idUser = req.idUser;
         const { name, lastName, currency, password, currentPassword } = req.body;
-        const profilephoto = req.file ? req.file.path : (req.body.profilephoto || undefined);
+        const profilephoto = req.file
+            ? (req.file.path || `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`)
+            : (req.body.profilephoto || undefined);
 
         const updated = await updateUserProfileService(idUser, {
             name,

@@ -17,7 +17,7 @@ server.use((req, res, next) => {
   next();
 });
 
-server.get(['/', '/health', '/ping'], (req, res) => {
+server.get(['/health', '/ping', '/api/health'], (req, res) => {
   res.status(200).json({
     status: 'ok',
     service: 'fintrack-backend',

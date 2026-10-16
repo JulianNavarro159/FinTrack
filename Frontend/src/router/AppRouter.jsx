@@ -6,12 +6,18 @@ import { MainLayout } from '../layouts/MainLayout';
 import { DashboardPage } from '../pages/DashboardPage';
 import { HistoryPage } from '../pages/HistoryPage';
 import { AuthPage } from '../pages/AuthPage';
-import { registerUserThunk } from '../store/authSlice';
+import { registerUserThunk, fetchProfileThunk } from '../store/authSlice';
 
 export const AppRouter = () => {
     const dispatch = useDispatch();
-    const { isAuthenticated, token } = useSelector((state) => state.auth);
+    const { isAuthenticated, token, user } = useSelector((state) => state.auth);
     const { isAuthenticated: isAuth0Authenticated, user: auth0User, isLoading: isAuth0Loading } = useAuth0();
+
+    useEffect(() => {
+        if (token && !user) {
+            dispatch(fetchProfileThunk());
+        }
+    }, [dispatch, token, user]);
 
     useEffect(() => {
         if (isAuth0Authenticated && auth0User && !token) {

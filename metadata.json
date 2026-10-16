@@ -1,0 +1,6 @@
+{
+  "name": "FinTrack",
+  "description": "Personal finance management application to track income, expenses, and monthly balances with multi-currency support.",
+  "permissions": [],
+  "capabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
