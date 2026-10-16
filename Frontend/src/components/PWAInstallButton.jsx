@@ -9,10 +9,9 @@ export const PWAInstallButton = ({ className = '', variant = 'navbar' }) => {
   const [qrCodeUrl, setQrCodeUrl] = useState('');
   const [copied, setCopied] = useState(false);
 
-  // Active App URL for the phone to access directly
   const appUrl = typeof window !== 'undefined' && !window.location.origin.includes('localhost')
     ? window.location.origin
-    : 'https://ais-dev-ljrjgtinvt7o6t5yyjpgef-280105086995.us-west2.run.app';
+    : 'https://fin-track-xi-eight.vercel.app';
 
   useEffect(() => {
     QRCode.toDataURL(appUrl, {
