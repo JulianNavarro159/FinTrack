@@ -46,9 +46,10 @@ function FinTrackMain() {
     useEffect(() => {
         const restoreSavedSession = async () => {
             try {
+                const isSessionActive = await SecureStore.getItemAsync('fintrack_session_active');
                 const token = await SecureStore.getItemAsync('fintrack_auth_token');
                 const rawProfile = await SecureStore.getItemAsync('fintrack_user_profile');
-                if (token && rawProfile) {
+                if (isSessionActive === 'true' && token && rawProfile) {
                     const parsedProfile = JSON.parse(rawProfile);
                     mobileApi.setToken(token);
                     setUser(parsedProfile);
@@ -81,6 +82,7 @@ function FinTrackMain() {
     const handleAuthSuccess = async (userData) => {
         setUser(userData);
         setIsAuthenticated(true);
+        await SecureStore.setItemAsync('fintrack_session_active', 'true').catch(() => {});
         if (userData) {
             await SecureStore.setItemAsync('fintrack_user_profile', JSON.stringify(userData)).catch(() => {});
         }
@@ -88,8 +90,7 @@ function FinTrackMain() {
 
     const handleLogout = async () => {
         mobileApi.setToken(null);
-        await SecureStore.deleteItemAsync('fintrack_auth_token').catch(() => {});
-        await SecureStore.deleteItemAsync('fintrack_user_profile').catch(() => {});
+        await SecureStore.setItemAsync('fintrack_session_active', 'false').catch(() => {});
         setUser(null);
         setIsAuthenticated(false);
     };

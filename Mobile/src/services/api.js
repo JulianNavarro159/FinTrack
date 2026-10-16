@@ -60,11 +60,7 @@ export const mobileApi = {
     },
 
     wakeUpServer() {
-        try {
-            fetch(`${currentBaseUrl}/ping`, { method: 'GET' }).catch(() => {});
-        } catch {
-            // Non-blocking prewarm
-        }
+        localDb.loadLocalState().catch(() => {});
     },
 
     async pingServer() {
@@ -77,168 +73,54 @@ export const mobileApi = {
             clearTimeout(timer);
             return res.ok;
         } catch {
-            try {
-                const fallbackController = new AbortController();
-                const fallbackTimer = setTimeout(() => fallbackController.abort(), 5000);
-                const res = await fetch(`${currentBaseUrl}/categories`, {
-                    signal: fallbackController.signal
-                });
-                clearTimeout(fallbackTimer);
-                return res.ok;
-            } catch {
-                return false;
-            }
+            return true;
         }
-    },
-
-    async request(endpoint, options = {}) {
-        const url = `${currentBaseUrl}${endpoint}`;
-        const headers = {
-            'Content-Type': 'application/json',
-            ...(options.headers || {})
-        };
-        if (currentToken) {
-            headers['Authorization'] = `Bearer ${currentToken}`;
-        }
-
-        const controller = new AbortController();
-        const timeoutMs = options.timeoutMs || 6000;
-        const timeoutTimer = setTimeout(() => controller.abort(), timeoutMs);
-
-        const config = {
-            method: options.method || 'GET',
-            headers,
-            signal: controller.signal
-        };
-        if (options.body) {
-            config.body = JSON.stringify(options.body);
-        }
-
-        let response;
-        try {
-            response = await fetch(url, config);
-        } catch (networkError) {
-            const err = new Error(`No se pudo conectar al servidor en ${currentBaseUrl}.`);
-            err.isNetworkError = true;
-            throw err;
-        } finally {
-            clearTimeout(timeoutTimer);
-        }
-
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) {
-            const err = new Error(data.message || `HTTP ${response.status}`);
-            err.status = response.status;
-            throw err;
-        }
-        return data;
     },
 
     async login(email, password = null) {
         this.clearCache();
-        try {
-            const data = await this.request('/users/login', {
-                method: 'POST',
-                body: { email, password }
-            });
-            if (data?.user) {
-                await localDb.updateLocalUser(data.user);
-            }
-            return data;
-        } catch (err) {
-            if (!err.isNetworkError && err.status && err.status < 500) {
-                throw err;
-            }
-            const user = await localDb.updateLocalUser({ email });
-            return {
-                token: `local_mobile_token_${Date.now()}`,
-                user
-            };
-        }
+        const user = await localDb.loginLocalUser(email, password);
+        return {
+            token: `local_mobile_token_${user.id}_${Date.now()}`,
+            user
+        };
     },
 
     async register(userData) {
         this.clearCache();
-        try {
-            const data = await this.request('/users/register', {
-                method: 'POST',
-                body: userData
-            });
-            if (data?.user) {
-                await localDb.updateLocalUser(data.user);
-            }
-            return data;
-        } catch (err) {
-            if (!err.isNetworkError && err.status && err.status < 500) {
-                throw err;
-            }
-            const user = await localDb.updateLocalUser({
-                name: userData.name,
-                email: userData.email,
-                currency: userData.currency || 'COP'
-            });
-            return {
-                token: `local_mobile_token_${Date.now()}`,
-                user
-            };
-        }
+        const user = await localDb.registerLocalUser(userData);
+        return {
+            token: `local_mobile_token_${user.id}_${Date.now()}`,
+            user
+        };
     },
 
     async getProfile() {
-        try {
-            const profile = await this.request('/users/me');
-            await localDb.updateLocalUser(profile);
-            return profile;
-        } catch {
-            return await localDb.getLocalUser();
-        }
+        return await localDb.getLocalUser();
     },
 
     async updateProfile(data) {
-        const localUser = await localDb.updateLocalUser(data);
-        try {
-            return await this.request('/users/profile', {
-                method: 'PUT',
-                body: data
-            });
-        } catch (err) {
-            if (!err.isNetworkError && err.status && err.status < 500) {
-                throw err;
-            }
-            return {
-                message: 'Profile updated in device storage',
-                user: localUser,
-                token: currentToken || `local_mobile_token_${Date.now()}`
-            };
-        }
+        const updatedUser = await localDb.updateLocalUser(data);
+        return {
+            message: 'Profile updated in device storage',
+            user: updatedUser,
+            token: currentToken || `local_mobile_token_${updatedUser.id}_${Date.now()}`
+        };
     },
 
     async updateCurrency(currency) {
         summaryCache.clear();
         await localDb.updateLocalUser({ currency });
-        try {
-            return await this.request('/users/currency', {
-                method: 'PATCH',
-                body: { currency }
-            });
-        } catch {
-            return { message: 'Currency updated in device storage', currency };
-        }
+        return { message: 'Currency updated in device storage', currency };
     },
 
     async getCategories(forceRefresh = false) {
         if (!forceRefresh && cachedCategories && cachedCategories.length > 0) {
             return cachedCategories;
         }
-        try {
-            const data = await this.request('/categories');
-            cachedCategories = data;
-            return data;
-        } catch {
-            const localCats = await localDb.getLocalCategories();
-            cachedCategories = localCats;
-            return localCats;
-        }
+        const localCats = await localDb.getLocalCategories();
+        cachedCategories = localCats;
+        return localCats;
     },
 
     async getMonthlySummary(month, forceRefresh = false) {
@@ -250,58 +132,27 @@ export const mobileApi = {
             return cached.data;
         }
 
-        try {
-            const query = month ? `?month=${month}` : '';
-            const data = await this.request(`/transaction/summary${query}`);
-            summaryCache.set(cacheKey, { timestamp: now, data });
-            return data;
-        } catch {
-            const localSummary = await localDb.getLocalMonthlySummary(month);
-            summaryCache.set(cacheKey, { timestamp: now, data: localSummary });
-            return localSummary;
-        }
+        const localSummary = await localDb.getLocalMonthlySummary(month);
+        summaryCache.set(cacheKey, { timestamp: now, data: localSummary });
+        return localSummary;
     },
 
     async getTransactions(filters = {}) {
-        try {
-            const params = new URLSearchParams();
-            Object.entries(filters).forEach(([key, val]) => {
-                if (val !== undefined && val !== null && val !== '') {
-                    params.append(key, val);
-                }
-            });
-            const query = params.toString() ? `?${params.toString()}` : '';
-            return await this.request(`/transaction${query}`);
-        } catch {
-            return await localDb.getLocalTransactions(filters);
-        }
+        return await localDb.getLocalTransactions(filters);
     },
 
     async createTransaction(data) {
         summaryCache.clear();
         const localCreated = await localDb.createLocalTransaction(data);
-        try {
-            return await this.request('/transaction', {
-                method: 'POST',
-                body: data
-            });
-        } catch {
-            return {
-                message: 'Transaction saved in device storage',
-                transaction: localCreated
-            };
-        }
+        return {
+            message: 'Transaction saved in device storage',
+            transaction: localCreated
+        };
     },
 
     async deleteTransaction(id) {
         summaryCache.clear();
         await localDb.deleteLocalTransaction(id);
-        try {
-            return await this.request(`/transaction/${id}`, {
-                method: 'DELETE'
-            });
-        } catch {
-            return { message: 'Transaction removed from device storage' };
-        }
+        return { message: 'Transaction removed from device storage' };
     }
 };

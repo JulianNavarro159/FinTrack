@@ -28,6 +28,24 @@ const DEFAULT_EXPENSE_CATEGORIES = [
 let memoryState = null;
 
 /**
+ * Removes sensitive internal attributes before returning a user object.
+ *
+ * @param {object} user - Raw user record.
+ * @returns {object} Public user record.
+ */
+function sanitizeUser(user) {
+    if (!user) return null;
+    return {
+        id: user.id || 1,
+        name: user.name || 'Usuario FinTrack',
+        lastName: user.lastName || '',
+        email: user.email || '',
+        currency: user.currency || 'COP',
+        profilephoto: user.profilephoto || ''
+    };
+}
+
+/**
  * Generates initial local database state with default categories.
  *
  * @returns {object} Initial state object.
@@ -55,9 +73,11 @@ function createInitialState() {
             name: 'Usuario FinTrack',
             lastName: '',
             email: 'usuario@fintrack.com',
+            password: null,
             currency: 'COP',
             profilephoto: ''
         },
+        users: [],
         categories,
         transactions: []
     };
@@ -117,6 +137,13 @@ export async function loadLocalState() {
             return initial;
         }
 
+        if (!Array.isArray(parsed.users)) {
+            parsed.users = [];
+            if (parsed.user && parsed.user.email && parsed.user.email !== 'usuario@fintrack.com') {
+                parsed.users.push({ ...parsed.user });
+            }
+        }
+
         memoryState = parsed;
         return memoryState;
     } catch {
@@ -127,29 +154,200 @@ export async function loadLocalState() {
 }
 
 /**
- * Retrieves local user record.
+ * Registers or updates a user in local phone storage.
  *
- * @returns {Promise<object>} User profile.
+ * @param {object} userData - Registration payload.
+ * @returns {Promise<object>} Sanitized user object.
  */
-export async function getLocalUser() {
+export async function registerLocalUser(userData) {
     const state = await loadLocalState();
-    return state.user;
+    const normEmail = (userData.email || '').trim().toLowerCase();
+    const cleanPassword = userData.password ? userData.password.trim() : null;
+
+    let existingIdx = state.users.findIndex(
+        (u) => (u.email || '').trim().toLowerCase() === normEmail
+    );
+
+    if (existingIdx !== -1) {
+        const existingUser = state.users[existingIdx];
+        if (existingUser.password && cleanPassword && existingUser.password !== cleanPassword) {
+            const err = new Error('Ya existe una cuenta con este correo y una contrasena distinta.');
+            err.status = 409;
+            throw err;
+        }
+        const updatedUser = {
+            ...existingUser,
+            name: userData.name ? userData.name.trim() : existingUser.name,
+            currency: userData.currency || existingUser.currency || 'COP',
+            password: cleanPassword || existingUser.password
+        };
+        state.users[existingIdx] = updatedUser;
+        state.user = updatedUser;
+        await persistState(state);
+        return sanitizeUser(updatedUser);
+    }
+
+    if (
+        state.user &&
+        (state.user.email === 'usuario@fintrack.com' ||
+            (state.user.email || '').trim().toLowerCase() === normEmail)
+    ) {
+        const upgradedUser = {
+            ...state.user,
+            id: state.user.id || 1,
+            name: userData.name ? userData.name.trim() : state.user.name,
+            lastName: userData.lastName ? userData.lastName.trim() : (state.user.lastName || ''),
+            email: normEmail,
+            password: cleanPassword || state.user.password || null,
+            currency: userData.currency || state.user.currency || 'COP'
+        };
+        state.user = upgradedUser;
+        state.users.push(upgradedUser);
+        await persistState(state);
+        return sanitizeUser(upgradedUser);
+    }
+
+    const nextId = state.users.reduce((maxId, u) => Math.max(maxId, u.id || 0), 1) + 1;
+    const newUser = {
+        id: nextId,
+        name: userData.name ? userData.name.trim() : 'Usuario',
+        lastName: userData.lastName ? userData.lastName.trim() : '',
+        email: normEmail,
+        password: cleanPassword,
+        currency: userData.currency || 'COP',
+        profilephoto: ''
+    };
+    state.users.push(newUser);
+    state.user = newUser;
+    await persistState(state);
+    return sanitizeUser(newUser);
 }
 
 /**
- * Updates local user profile fields.
+ * Authenticates a user against local phone storage credentials.
+ *
+ * @param {string} email - Email address.
+ * @param {string} password - Plaintext password.
+ * @returns {Promise<object>} Sanitized user object.
+ */
+export async function loginLocalUser(email, password) {
+    const state = await loadLocalState();
+    const normEmail = (email || '').trim().toLowerCase();
+    const cleanPassword = password ? password.trim() : '';
+
+    let foundUser = state.users.find(
+        (u) => (u.email || '').trim().toLowerCase() === normEmail
+    );
+
+    if (!foundUser && state.user && (state.user.email || '').trim().toLowerCase() === normEmail) {
+        foundUser = state.user;
+        state.users.push(foundUser);
+    }
+
+    if (
+        !foundUser &&
+        state.users.length === 0 &&
+        state.user &&
+        state.user.email === 'usuario@fintrack.com' &&
+        state.transactions.length > 0
+    ) {
+        foundUser = {
+            ...state.user,
+            email: normEmail,
+            password: cleanPassword
+        };
+        state.user = foundUser;
+        state.users.push(foundUser);
+        await persistState(state);
+        return sanitizeUser(foundUser);
+    }
+
+    if (!foundUser) {
+        const err = new Error('No se encontro una cuenta con ese correo en el dispositivo. Registrate primero.');
+        err.status = 401;
+        throw err;
+    }
+
+    if (!foundUser.password) {
+        foundUser.password = cleanPassword;
+        state.user = foundUser;
+        await persistState(state);
+        return sanitizeUser(foundUser);
+    }
+
+    if (foundUser.password !== cleanPassword) {
+        const err = new Error('Contrasena incorrecta.');
+        err.status = 401;
+        throw err;
+    }
+
+    state.user = foundUser;
+    await persistState(state);
+    return sanitizeUser(foundUser);
+}
+
+/**
+ * Retrieves current local user record.
+ *
+ * @returns {Promise<object>} Sanitized user profile.
+ */
+export async function getLocalUser() {
+    const state = await loadLocalState();
+    return sanitizeUser(state.user);
+}
+
+/**
+ * Updates local user profile fields and handles password changes.
  *
  * @param {object} fields - User fields to update.
- * @returns {Promise<object>} Updated user profile.
+ * @returns {Promise<object>} Updated sanitized user profile.
  */
 export async function updateLocalUser(fields) {
     const state = await loadLocalState();
-    state.user = {
-        ...state.user,
-        ...fields
-    };
+    const currentUser = state.user || {};
+
+    if (fields.password && fields.password.trim().length > 0) {
+        if (fields.password.trim().length < 6) {
+            const err = new Error('La nueva contrasena debe tener al menos 6 caracteres.');
+            err.status = 400;
+            throw err;
+        }
+        if (currentUser.password && fields.currentPassword && currentUser.password !== fields.currentPassword.trim()) {
+            const err = new Error('La contrasena actual no coincide.');
+            err.status = 401;
+            throw err;
+        }
+        currentUser.password = fields.password.trim();
+    }
+
+    if (fields.name !== undefined && fields.name !== null) {
+        currentUser.name = fields.name.trim();
+    }
+    if (fields.lastName !== undefined && fields.lastName !== null) {
+        currentUser.lastName = fields.lastName.trim();
+    }
+    if (fields.email !== undefined && fields.email !== null) {
+        currentUser.email = fields.email.trim().toLowerCase();
+    }
+    if (fields.currency !== undefined && fields.currency !== null) {
+        currentUser.currency = fields.currency.toUpperCase().trim();
+    }
+    if (fields.profilephoto !== undefined) {
+        currentUser.profilephoto = fields.profilephoto;
+    }
+
+    state.user = currentUser;
+    const idx = state.users.findIndex(
+        (u) => u.id === currentUser.id || (u.email || '').toLowerCase() === (currentUser.email || '').toLowerCase()
+    );
+    if (idx !== -1) {
+        state.users[idx] = currentUser;
+    } else if (currentUser.email && currentUser.email !== 'usuario@fintrack.com') {
+        state.users.push(currentUser);
+    }
+
     await persistState(state);
-    return state.user;
+    return sanitizeUser(state.user);
 }
 
 /**
@@ -163,14 +361,17 @@ export async function getLocalCategories() {
 }
 
 /**
- * Queries local transactions with filtering and pagination.
+ * Queries local transactions for the active user with filtering and pagination.
  *
  * @param {object} params - Filter parameters.
  * @returns {Promise<object>} Paginated transaction list and summary.
  */
 export async function getLocalTransactions(params = {}) {
     const state = await loadLocalState();
-    let list = [...state.transactions];
+    const activeUserId = state.user?.id || 1;
+    let list = state.transactions.filter(
+        (t) => !t.idUser || t.idUser === activeUserId || state.users.length <= 1
+    );
 
     if (params.type && ['income', 'expense'].includes(params.type)) {
         list = list.filter((t) => t.type === params.type);
@@ -280,12 +481,15 @@ export async function deleteLocalTransaction(id) {
  */
 export async function getLocalMonthlySummary(monthParam) {
     const state = await loadLocalState();
+    const activeUserId = state.user?.id || 1;
     const now = new Date();
     const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     const targetMonth = monthParam || defaultMonth;
 
-    const monthTransactions = state.transactions.filter((t) =>
-        (t.date || '').startsWith(targetMonth)
+    const monthTransactions = state.transactions.filter(
+        (t) =>
+            (!t.idUser || t.idUser === activeUserId || state.users.length <= 1) &&
+            (t.date || '').startsWith(targetMonth)
     );
 
     monthTransactions.sort((a, b) => {

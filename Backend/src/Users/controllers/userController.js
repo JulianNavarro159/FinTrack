@@ -16,6 +16,7 @@ const {
  */
 const userRegister = async (req, res) => {
     try {
+        const { name, lastName, email, password, currency, emailVerified, isAdmin } = req.body;
         const profilephoto = req.file
             ? (req.file.path || `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`)
             : (req.body.profilephoto || null);
