@@ -3,9 +3,10 @@ import { NavLink } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import { logout } from '../../store/authSlice';
 import { getCurrencySymbol } from '../../utils/currencies';
-import { Wallet, LayoutDashboard, History, Coins, LogOut, Plus, UserCheck } from 'lucide-react';
+import { Wallet, LayoutDashboard, History, Coins, LogOut, Plus, UserCheck, HardDrive } from 'lucide-react';
+import { PWAInstallButton } from '../../components/PWAInstallButton';
 
-export const NavBar = ({ onOpenCurrencyModal, onOpenTransactionModal, onOpenProfileModal }) => {
+export const NavBar = ({ onOpenCurrencyModal, onOpenTransactionModal, onOpenProfileModal, onOpenStorageModal }) => {
     const dispatch = useDispatch();
     const user = useSelector((state) => state.auth.user);
     const currency = user?.currency || 'USD';
@@ -46,6 +47,8 @@ export const NavBar = ({ onOpenCurrencyModal, onOpenTransactionModal, onOpenProf
                 </div>
 
                 <div className="navbar-right">
+                    <PWAInstallButton />
+
                     <button
                         type="button"
                         className="currency-pill-btn"
@@ -54,6 +57,16 @@ export const NavBar = ({ onOpenCurrencyModal, onOpenTransactionModal, onOpenProf
                     >
                         <Coins size={15} />
                         <span>{currency} ({currencySymbol})</span>
+                    </button>
+
+                    <button
+                        type="button"
+                        className="currency-pill-btn"
+                        onClick={onOpenStorageModal}
+                        title="Almacenamiento y Copia de Seguridad en la Nube"
+                    >
+                        <HardDrive size={15} />
+                        <span>Datos / Copia</span>
                     </button>
 
                     <button

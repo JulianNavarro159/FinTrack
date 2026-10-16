@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="finGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4f46e5"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-opacity="0.25"/>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#finGrad)"/>
+  <!-- Wallet icon illustration -->
+  <g filter="url(#shadow)" fill="none" stroke="#ffffff" stroke-width="28" stroke-linecap="round" stroke-linejoin="round" transform="translate(64, 76) scale(0.75)">
+    <!-- Main wallet body -->
+    <path d="M48 96 C48 69.49 69.49 48 96 48 L416 48 C442.51 48 464 69.49 464 96 L464 416 C464 442.51 442.51 464 416 464 L96 464 C69.49 464 48 442.51 48 416 Z" fill="rgba(255,255,255,0.12)"/>
+    <path d="M48 160 L464 160"/>
+    <rect x="320" y="240" width="144" height="96" rx="24" fill="#ffffff" stroke="#ffffff"/>
+    <circle cx="368" cy="288" r="14" fill="#4f46e5"/>
+    <!-- Growth indicator badge -->
+    <path d="M128 352 L192 288 L256 320 L320 224" stroke="#a7f3d0" stroke-width="26"/>
+    <polyline points="280 224 320 224 320 264" stroke="#a7f3d0" stroke-width="26"/>
+  </g>
+</svg>

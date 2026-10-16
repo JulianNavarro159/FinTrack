@@ -1,7 +1,9 @@
+import * as localDb from './localStorageDb';
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
 const getStoredToken = () => {
-    return localStorage.getItem('fintrack_token') || '';
+    return localStorage.getItem('fintrack_token') || 'local_session_token';
 };
 
 const getHeaders = (hasBody = true) => {
@@ -30,155 +32,233 @@ export const api = {
     },
 
     async registerUser(userData) {
-        const response = await fetch(`${API_BASE_URL}/users/register`, {
-            method: 'POST',
-            headers: getHeaders(true),
-            body: JSON.stringify(userData)
-        });
-        if (!response.ok) {
-            const err = await response.json().catch(() => ({}));
-            throw new Error(err.message || 'Registration failed');
+        try {
+            const response = await fetch(`${API_BASE_URL}/users/register`, {
+                method: 'POST',
+                headers: getHeaders(true),
+                body: JSON.stringify(userData)
+            });
+            if (response.ok) {
+                const data = await response.json();
+                localDb.updateLocalUser(data.user);
+                return data;
+            }
+        } catch (err) {
+            console.warn('[API] Using local device registration fallback:', err.message);
         }
-        return await response.json();
+        const user = localDb.updateLocalUser({
+            name: userData.name,
+            email: userData.email,
+            currency: userData.currency || 'USD'
+        });
+        return {
+            token: 'local_token_' + Date.now(),
+            user
+        };
     },
 
     async login(email, password = null) {
-        const response = await fetch(`${API_BASE_URL}/users/login`, {
-            method: 'POST',
-            headers: getHeaders(true),
-            body: JSON.stringify({ email, password })
-        });
-        if (!response.ok) {
-            const err = await response.json().catch(() => ({}));
-            throw new Error(err.message || 'Login failed');
+        try {
+            const response = await fetch(`${API_BASE_URL}/users/login`, {
+                method: 'POST',
+                headers: getHeaders(true),
+                body: JSON.stringify({ email, password })
+            });
+            if (response.ok) {
+                const data = await response.json();
+                localDb.updateLocalUser(data.user);
+                return data;
+            }
+        } catch (err) {
+            console.warn('[API] Using local device login fallback:', err.message);
         }
-        return await response.json();
+        const user = localDb.getLocalUser();
+        return {
+            token: 'local_token_' + Date.now(),
+            user
+        };
     },
 
     async getProfile() {
-        const response = await fetch(`${API_BASE_URL}/users/me`, {
-            headers: getHeaders(false)
-        });
-        if (!response.ok) {
-            const err = await response.json().catch(() => ({}));
-            throw new Error(err.message || 'Failed to fetch user profile');
+        try {
+            const response = await fetch(`${API_BASE_URL}/users/me`, {
+                headers: getHeaders(false)
+            });
+            if (response.ok) {
+                const user = await response.json();
+                localDb.updateLocalUser(user);
+                return user;
+            }
+        } catch (err) {
+            console.warn('[API] Serving profile from local device storage:', err.message);
         }
-        return await response.json();
+        return localDb.getLocalUser();
     },
 
     async updateProfile(profileData) {
-        const response = await fetch(`${API_BASE_URL}/users/profile`, {
-            method: 'PUT',
-            headers: getHeaders(true),
-            body: JSON.stringify(profileData)
-        });
-        if (!response.ok) {
-            const err = await response.json().catch(() => ({}));
-            throw new Error(err.message || 'Failed to update user profile');
+        localDb.updateLocalUser(profileData);
+        try {
+            const response = await fetch(`${API_BASE_URL}/users/profile`, {
+                method: 'PUT',
+                headers: getHeaders(true),
+                body: JSON.stringify(profileData)
+            });
+            if (response.ok) {
+                return await response.json();
+            }
+        } catch (err) {
+            console.warn('[API] Updated profile in local storage (server offline):', err.message);
         }
-        return await response.json();
+        return {
+            message: 'Profile updated locally',
+            user: localDb.getLocalUser()
+        };
     },
 
     async updateCurrency(currency) {
-        const response = await fetch(`${API_BASE_URL}/users/currency`, {
-            method: 'PATCH',
-            headers: getHeaders(true),
-            body: JSON.stringify({ currency })
-        });
-        if (!response.ok) {
-            const err = await response.json().catch(() => ({}));
-            throw new Error(err.message || 'Failed to update currency');
+        localDb.updateLocalUser({ currency });
+        try {
+            const response = await fetch(`${API_BASE_URL}/users/currency`, {
+                method: 'PATCH',
+                headers: getHeaders(true),
+                body: JSON.stringify({ currency })
+            });
+            if (response.ok) {
+                return await response.json();
+            }
+        } catch (err) {
+            console.warn('[API] Currency updated in local storage:', err.message);
         }
-        return await response.json();
+        return { message: 'Currency updated locally', currency };
     },
 
     async getCategories() {
-        const response = await fetch(`${API_BASE_URL}/categories`, {
-            headers: getHeaders(false)
-        });
-        if (!response.ok) {
-            const err = await response.json().catch(() => ({}));
-            throw new Error(err.message || 'Failed to fetch categories');
+        try {
+            const response = await fetch(`${API_BASE_URL}/categories`, {
+                headers: getHeaders(false)
+            });
+            if (response.ok) {
+                const data = await response.json();
+                return data;
+            }
+        } catch (err) {
+            console.warn('[API] Using local device categories fallback:', err.message);
         }
-        return await response.json();
+        return localDb.getLocalCategories();
     },
 
     async getPaymentMethods() {
-        const response = await fetch(`${API_BASE_URL}/categories/payment-methods`, {
-            headers: getHeaders(false)
-        });
-        if (!response.ok) {
-            const err = await response.json().catch(() => ({}));
-            throw new Error(err.message || 'Failed to fetch payment methods');
+        try {
+            const response = await fetch(`${API_BASE_URL}/categories/payment-methods`, {
+                headers: getHeaders(false)
+            });
+            if (response.ok) {
+                return await response.json();
+            }
+        } catch (err) {
+            console.warn('[API] Using local payment methods fallback:', err.message);
         }
-        return await response.json();
+        return localDb.getLocalPaymentMethods();
     },
 
     async getMonthlySummary(month) {
-        const query = month ? `?month=${month}` : '';
-        const response = await fetch(`${API_BASE_URL}/transaction/summary${query}`, {
-            headers: getHeaders(false)
-        });
-        if (!response.ok) {
-            const err = await response.json().catch(() => ({}));
-            throw new Error(err.message || 'Failed to fetch monthly summary');
+        try {
+            const query = month ? `?month=${month}` : '';
+            const response = await fetch(`${API_BASE_URL}/transaction/summary${query}`, {
+                headers: getHeaders(false)
+            });
+            if (response.ok) {
+                return await response.json();
+            }
+        } catch (err) {
+            console.warn('[API] Calculating monthly summary from local device storage:', err.message);
         }
-        return await response.json();
+        return localDb.getLocalMonthlySummary(month);
     },
 
     async getTransactions(params = {}) {
-        const searchParams = new URLSearchParams();
-        Object.entries(params).forEach(([key, val]) => {
-            if (val !== undefined && val !== null && val !== '') {
-                searchParams.append(key, val);
+        try {
+            const searchParams = new URLSearchParams();
+            Object.entries(params).forEach(([key, val]) => {
+                if (val !== undefined && val !== null && val !== '') {
+                    searchParams.append(key, val);
+                }
+            });
+            const query = searchParams.toString() ? `?${searchParams.toString()}` : '';
+            const response = await fetch(`${API_BASE_URL}/transaction${query}`, {
+                headers: getHeaders(false)
+            });
+            if (response.ok) {
+                return await response.json();
             }
-        });
-        const query = searchParams.toString() ? `?${searchParams.toString()}` : '';
-        const response = await fetch(`${API_BASE_URL}/transaction${query}`, {
-            headers: getHeaders(false)
-        });
-        if (!response.ok) {
-            const err = await response.json().catch(() => ({}));
-            throw new Error(err.message || 'Failed to fetch transactions');
+        } catch (err) {
+            console.warn('[API] Loading transactions from local device storage:', err.message);
         }
-        return await response.json();
+        return localDb.getLocalTransactions(params);
     },
 
     async createTransaction(transactionData) {
-        const response = await fetch(`${API_BASE_URL}/transaction`, {
-            method: 'POST',
-            headers: getHeaders(true),
-            body: JSON.stringify(transactionData)
-        });
-        if (!response.ok) {
-            const err = await response.json().catch(() => ({}));
-            throw new Error(err.message || 'Failed to create transaction');
+        const localCreated = localDb.createLocalTransaction(transactionData);
+        try {
+            const response = await fetch(`${API_BASE_URL}/transaction`, {
+                method: 'POST',
+                headers: getHeaders(true),
+                body: JSON.stringify(transactionData)
+            });
+            if (response.ok) {
+                return await response.json();
+            }
+        } catch (err) {
+            console.warn('[API] Saved transaction to local storage (server offline):', err.message);
         }
-        return await response.json();
+        return {
+            message: 'Transaction saved to phone storage',
+            transaction: localCreated
+        };
     },
 
     async updateTransaction(id, transactionData) {
-        const response = await fetch(`${API_BASE_URL}/transaction/${id}`, {
-            method: 'PUT',
-            headers: getHeaders(true),
-            body: JSON.stringify(transactionData)
-        });
-        if (!response.ok) {
-            const err = await response.json().catch(() => ({}));
-            throw new Error(err.message || 'Failed to update transaction');
+        const localUpdated = localDb.updateLocalTransaction(id, transactionData);
+        try {
+            const response = await fetch(`${API_BASE_URL}/transaction/${id}`, {
+                method: 'PUT',
+                headers: getHeaders(true),
+                body: JSON.stringify(transactionData)
+            });
+            if (response.ok) {
+                return await response.json();
+            }
+        } catch (err) {
+            console.warn('[API] Updated transaction in local storage:', err.message);
         }
-        return await response.json();
+        return {
+            message: 'Transaction updated in phone storage',
+            transaction: localUpdated
+        };
     },
 
     async deleteTransaction(id) {
-        const response = await fetch(`${API_BASE_URL}/transaction/${id}`, {
-            method: 'DELETE',
-            headers: getHeaders(false)
-        });
-        if (!response.ok) {
-            const err = await response.json().catch(() => ({}));
-            throw new Error(err.message || 'Failed to delete transaction');
+        localDb.deleteLocalTransaction(id);
+        try {
+            const response = await fetch(`${API_BASE_URL}/transaction/${id}`, {
+                method: 'DELETE',
+                headers: getHeaders(false)
+            });
+            if (response.ok) {
+                return await response.json();
+            }
+        } catch (err) {
+            console.warn('[API] Deleted transaction from local storage:', err.message);
         }
-        return await response.json();
+        return { message: 'Transaction deleted from phone storage' };
+    },
+
+    // Cloud / File backup & restore helpers
+    exportBackup() {
+        return localDb.exportLocalDataJson();
+    },
+
+    importBackup(jsonString) {
+        return localDb.importLocalDataJson(jsonString);
     }
 };

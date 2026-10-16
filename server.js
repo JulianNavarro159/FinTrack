@@ -43,6 +43,19 @@ async function start() {
       root: path.resolve(__dirname, 'Frontend')
     });
     backendApp.use(vite.middlewares);
+
+    // Fallback for HTML routing in SPA
+    backendApp.use('*', async (req, res, next) => {
+      const url = req.originalUrl;
+      try {
+        let template = fs.readFileSync(path.resolve(__dirname, 'Frontend/index.html'), 'utf-8');
+        template = await vite.transformIndexHtml(url, template);
+        res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
+      } catch (e) {
+        vite.ssrFixStacktrace(e);
+        next(e);
+      }
+    });
   }
 
   backendApp.listen(PORT, '0.0.0.0', () => {

@@ -4,6 +4,7 @@ import { loginUserThunk, registerUserThunk, clearAuthError } from '../store/auth
 import { CURRENCIES } from '../utils/currencies';
 import { Wallet, LogIn, UserPlus, Coins, Mail, User, AlertCircle, Lock, Eye, EyeOff } from 'lucide-react';
 import { useAuth0 } from '@auth0/auth0-react';
+import { PWAInstallButton } from '../components/PWAInstallButton';
 
 export const AuthPage = () => {
     const dispatch = useDispatch();
@@ -271,6 +272,8 @@ export const AuthPage = () => {
                         Continuar con Auth0 SSO
                     </button>
                 )}
+
+                <PWAInstallButton variant="auth" />
             </div>
         </div>
     );

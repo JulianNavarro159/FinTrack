@@ -5,17 +5,19 @@ import { Footer } from './footer/Footer';
 import { CurrencyModal } from '../components/CurrencyModal';
 import { TransactionModal } from '../components/TransactionModal';
 import { ProfileModal } from '../components/ProfileModal';
-import { fetchCategoriesThunk } from '../store/financeSlice';
+import { StorageBackupModal } from '../components/StorageBackupModal';
+import { fetchCategoriesThunk, fetchMonthlySummaryThunk, fetchTransactionsThunk } from '../store/financeSlice';
 import { fetchProfileThunk } from '../store/authSlice';
 
 export const MainLayout = ({ children }) => {
     const dispatch = useDispatch();
     const token = useSelector((state) => state.auth.token);
-    const user = useSelector((state) => state.auth.user);
+    const selectedMonth = useSelector((state) => state.finance.selectedMonth);
 
     const [isCurrencyModalOpen, setIsCurrencyModalOpen] = useState(false);
     const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
     const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+    const [isStorageModalOpen, setIsStorageModalOpen] = useState(false);
     const [transactionModalType, setTransactionModalType] = useState('expense');
 
     useEffect(() => {
@@ -30,12 +32,20 @@ export const MainLayout = ({ children }) => {
         setIsTransactionModalOpen(true);
     };
 
+    const handleDataRestored = () => {
+        dispatch(fetchProfileThunk());
+        dispatch(fetchCategoriesThunk());
+        dispatch(fetchMonthlySummaryThunk(selectedMonth));
+        dispatch(fetchTransactionsThunk({ month: selectedMonth }));
+    };
+
     return (
         <div className="app-shell">
             <NavBar
                 onOpenCurrencyModal={() => setIsCurrencyModalOpen(true)}
                 onOpenTransactionModal={handleOpenTransactionModal}
                 onOpenProfileModal={() => setIsProfileModalOpen(true)}
+                onOpenStorageModal={() => setIsStorageModalOpen(true)}
             />
 
             <main className="main-content-area">
@@ -43,12 +53,14 @@ export const MainLayout = ({ children }) => {
                     ? children({
                         onOpenTransactionModal: handleOpenTransactionModal,
                         onOpenCurrencyModal: () => setIsCurrencyModalOpen(true),
-                        onOpenProfileModal: () => setIsProfileModalOpen(true)
+                        onOpenProfileModal: () => setIsProfileModalOpen(true),
+                        onOpenStorageModal: () => setIsStorageModalOpen(true)
                     })
                     : React.cloneElement(children, {
                         onOpenTransactionModal: handleOpenTransactionModal,
                         onOpenCurrencyModal: () => setIsCurrencyModalOpen(true),
-                        onOpenProfileModal: () => setIsProfileModalOpen(true)
+                        onOpenProfileModal: () => setIsProfileModalOpen(true),
+                        onOpenStorageModal: () => setIsStorageModalOpen(true)
                     })}
             </main>
 
@@ -68,6 +80,12 @@ export const MainLayout = ({ children }) => {
                 isOpen={isTransactionModalOpen}
                 onClose={() => setIsTransactionModalOpen(false)}
                 initialType={transactionModalType}
+            />
+
+            <StorageBackupModal
+                isOpen={isStorageModalOpen}
+                onClose={() => setIsStorageModalOpen(false)}
+                onDataRestored={handleDataRestored}
             />
         </div>
     );
